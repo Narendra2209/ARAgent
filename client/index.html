@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Metfold AR — Receivables Hub</title>
+
+    <!-- Tailwind (CDN) — matches the design mockup 1:1 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'sans-serif'],
+            },
+          },
+        },
+      };
+    </script>
+    <style>
+      body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+      .mono { font-family: 'SF Mono', 'Roboto Mono', Monaco, monospace; font-feature-settings: 'tnum'; }
+      .num { font-variant-numeric: tabular-nums; }
+      .scroll-thin::-webkit-scrollbar { width: 6px; height: 6px; }
+      .scroll-thin::-webkit-scrollbar-thumb { background: #d6d3d1; border-radius: 3px; }
+      .scroll-thin::-webkit-scrollbar-track { background: transparent; }
+      .tier-1 { background: #fef3c7; color: #92400e; border: 1px solid #fde68a; }
+      .tier-2 { background: #dbeafe; color: #1e40af; border: 1px solid #bfdbfe; }
+      .tier-5 { background: #f3e8ff; color: #6b21a8; border: 1px solid #e9d5ff; }
+      .tier-9 { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; }
+    </style>
+  </head>
+  <body class="bg-stone-100 text-stone-900">
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
