@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { getSetupStatus, login, registerAdmin } from '../api.js';
 import { setAuth } from '../authStore.js';
+import logoUrl from '../assets/metfold-logo.jpeg';
 
 export default function LoginPage() {
   const [mode, setMode] = useState('loading'); // loading | login | setup
@@ -44,14 +45,9 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen bg-stone-100 flex items-center justify-center px-4">
       <div className="w-full max-w-sm">
-        <div className="flex items-center gap-2 justify-center mb-6">
-          <div className="w-9 h-9 bg-orange-600 rounded-lg flex items-center justify-center text-white font-bold">
-            M
-          </div>
-          <div>
-            <div className="text-stone-900 font-semibold">Metfold AR</div>
-            <div className="text-stone-500 text-xs">Receivables Hub</div>
-          </div>
+        <div className="flex flex-col items-center mb-6">
+          <img src={logoUrl} alt="Metfold Sheet Metal" className="w-48 h-auto" />
+          <div className="text-stone-500 text-xs mt-2 tracking-wide">Receivables Hub</div>
         </div>
 
         <div className="bg-white border border-stone-200 rounded-xl shadow-sm p-6">

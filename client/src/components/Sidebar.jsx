@@ -1,4 +1,5 @@
 import { fmtNum } from '../format.js';
+import logoUrl from '../assets/metfold-logo.jpeg';
 
 const NAV = [
   { key: 'dashboard', label: 'Dashboard' },
@@ -32,15 +33,12 @@ export default function Sidebar({
 }) {
   return (
     <aside className="w-56 bg-stone-900 text-stone-300 flex flex-col flex-shrink-0">
-      <div className="px-5 py-5 border-b border-stone-800">
-        <div className="flex items-center gap-2">
-          <div className="w-7 h-7 bg-orange-600 rounded flex items-center justify-center text-white font-bold text-sm">
-            M
-          </div>
-          <div>
-            <div className="text-white font-semibold text-sm">Metfold AR</div>
-            <div className="text-stone-500 text-xs">Receivables Hub</div>
-          </div>
+      <div className="px-4 py-4 border-b border-stone-800">
+        <div className="bg-white rounded-lg px-3 py-2.5">
+          <img src={logoUrl} alt="Metfold Sheet Metal" className="w-full h-auto" />
+        </div>
+        <div className="text-stone-500 text-xs mt-2 text-center tracking-wide">
+          Receivables Hub
         </div>
       </div>
 
