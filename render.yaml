@@ -1,0 +1,17 @@
+# Render Blueprint for the AR Agent backend (Express API).
+# Deploy: push this file, then in Render → "New +" → "Blueprint" → pick this repo.
+services:
+  - type: web
+    name: aragent-backend
+    runtime: node
+    plan: free
+    rootDir: server
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      # Render injects PORT automatically; the server reads it.
+      # Set all secrets (MONGODB_URI, JWT_SECRET, MYOB_*, SMTP_*, GRAPH_*, etc.)
+      # in the Render dashboard → Environment. See server/.env.example.
