@@ -370,12 +370,8 @@ export default function RemindersView() {
                       <td className="px-2 py-2.5 text-right num">{fmtMoney(r.overdue)}</td>
                       {!testMode && (
                         <td className="px-2 py-2.5">
+                          {/* Show the customer's email on file; leave blank when none is known. */}
                           {r.customerEmail}
-                          {r.usingDefaultEmail && (
-                            <span className="ml-1 text-[10px] uppercase px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-200">
-                              default
-                            </span>
-                          )}
                         </td>
                       )}
                       <td className="px-2 py-2.5">{r.recipient}</td>

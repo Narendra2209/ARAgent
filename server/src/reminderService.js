@@ -54,9 +54,9 @@ export async function buildOverdueReminders() {
       const profile = profileById.get(c.customerId);
       return {
         ...c,
-        // The customer's email on file (already defaulted in customerService),
-        // or the configured default if we have no profile row at all.
-        customerEmail: profile?.email || config.customers.defaultEmail,
+        // The customer's real email on file; leave blank when none is known
+        // (don't substitute the default placeholder address).
+        customerEmail: profile?.email || '',
         usingDefaultEmail: profile ? profile.usingDefaultEmail : true,
       };
     })
