@@ -282,13 +282,14 @@ export default function RemindersView() {
           <button className={btnGhost} onClick={() => run(true)} disabled={busy !== null}>
             {busy === 'preview' ? 'Loading…' : 'Preview'}
           </button>
-          <button
+          {/* Bulk "Send N emails" button — hidden for now; uncomment the <button> below to show it again. */}
+          {/* <button
             className="text-sm px-3 py-1.5 bg-orange-600 text-white rounded hover:bg-orange-700 disabled:opacity-50"
             onClick={onSend}
             disabled={busy !== null || !data || selected.size === 0}
           >
             {busy === 'send' ? 'Sending…' : `Send ${selected.size} email${selected.size === 1 ? '' : 's'}`}
-          </button>
+          </button> */}
         </div>
 
         {error && (
