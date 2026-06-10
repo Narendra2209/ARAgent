@@ -9,11 +9,12 @@ function KpiStrip({ kpis, totals }) {
   const pct = (v) => (book ? Math.round((v / book) * 100) : 0);
 
   const cards = [
-    { label: 'Total Receivables', value: fmtMoney0(kpis.totalReceivables), sub: '100% of book', accent: 'text-stone-900' },
-    { label: '1–30 Days', value: fmtMoney0(totals.b1_30), sub: `${pct(totals.b1_30)}% of book`, accent: 'text-amber-700' },
-    { label: '31–60 Days', value: fmtMoney0(totals.b31_60), sub: `${pct(totals.b31_60)}% of book`, accent: 'text-amber-700' },
-    { label: '61–90 Days', value: fmtMoney0(totals.b61_90), sub: `${pct(totals.b61_90)}% of book`, accent: 'text-orange-700' },
-    { label: '90+ Days', value: fmtMoney0(totals.b90plus), sub: `${pct(totals.b90plus)}% of book`, accent: 'text-red-700' },
+    { label: 'Total Receivables', value: fmtMoney(kpis.totalReceivables), sub: '100% of book', accent: 'text-stone-900' },
+    { label: 'Current', value: fmtMoney(totals.current), sub: `${pct(totals.current)}% of book`, accent: 'text-emerald-700' },
+    { label: '1–30 Days', value: fmtMoney(totals.b1_30), sub: `${pct(totals.b1_30)}% of book`, accent: 'text-amber-700' },
+    { label: '31–60 Days', value: fmtMoney(totals.b31_60), sub: `${pct(totals.b31_60)}% of book`, accent: 'text-amber-700' },
+    { label: '61–90 Days', value: fmtMoney(totals.b61_90), sub: `${pct(totals.b61_90)}% of book`, accent: 'text-orange-700' },
+    { label: '90+ Days', value: fmtMoney(totals.b90plus), sub: `${pct(totals.b90plus)}% of book`, accent: 'text-red-700' },
   ];
 
   return (
