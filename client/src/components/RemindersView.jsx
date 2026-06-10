@@ -259,11 +259,10 @@ export default function RemindersView() {
         {/* Health banner */}
         {health && (
           <div
-            className={`px-4 py-3 rounded border text-sm ${
-              health.tokenOk
-                ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
-                : 'bg-red-50 border-red-200 text-red-800'
-            }`}
+            className={`px-4 py-3 rounded border text-sm ${health.tokenOk
+              ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+              : 'bg-red-50 border-red-200 text-red-800'
+              }`}
           >
             {!health.configured ? (
               <><strong>Not configured.</strong> Add to server/.env: {health.missing?.join(', ')}.</>
@@ -346,7 +345,9 @@ export default function RemindersView() {
                     {!testMode && <th className="text-left font-medium px-2 py-2">Customer email</th>}
                     <th className="text-left font-medium px-2 py-2">Recipient</th>
                     <th className="text-left font-medium px-2 py-2">Status</th>
-                    <th className="text-left font-medium px-3 py-2">Action</th>
+                    {/* Action column: per-row "Send" button to email a single customer's reminder.
+                        Hidden for now — uncomment the <th> below to show the Action column again. */}
+                    {/* <th className="text-left font-medium px-3 py-2">Action</th> */}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-stone-100">
@@ -379,15 +380,16 @@ export default function RemindersView() {
                       <td className="px-2 py-2.5">{r.recipient}</td>
                       <td className="px-2 py-2.5">
                         <span
-                          className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold ${
-                            STATUS_PILL[r.status] || 'bg-stone-100 text-stone-600'
-                          }`}
+                          className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold ${STATUS_PILL[r.status] || 'bg-stone-100 text-stone-600'
+                            }`}
                         >
                           {STATUS_LABEL[r.status] ?? r.status}
                         </span>
                         {r.error && <div className="text-xs text-red-600 mt-0.5">{r.error}</div>}
                       </td>
-                      <td className="px-3 py-2.5">
+                      {/* Send button: emails this one customer; disabled while any bulk/single send is in flight.
+                          Hidden for now — uncomment the <td> below to show the Send button again. */}
+                      {/* <td className="px-3 py-2.5">
                         <button
                           className="text-xs px-2.5 py-1 border border-stone-300 rounded hover:bg-stone-50 disabled:opacity-40"
                           onClick={() => sendOne(r)}
@@ -395,7 +397,7 @@ export default function RemindersView() {
                         >
                           {sendingId === r.customerId ? 'Sending…' : 'Send'}
                         </button>
-                      </td>
+                      </td> */}
                     </tr>
                   ))}
                   {results.length === 0 && (
