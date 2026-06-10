@@ -5,6 +5,20 @@ import { Customer } from './models/Customer.js';
 import { isDbConnected } from './db.js';
 
 /**
+ * Strip everything except the actual number. MYOB contacts often tack a name or
+ * note onto the phone field (e.g. "0494053837 Will", "Kane 61402690208"), so we
+ * drop letters/notes and keep only digits and standard phone punctuation
+ * (+, -, spaces, parentheses).
+ */
+function cleanPhoneNumber(value) {
+  if (typeof value !== 'string') return '';
+  return value
+    .replace(/[^\d+()\-\s]/g, '') // remove names/letters and other non-phone chars
+    .replace(/\s{2,}/g, ' ') // collapse gaps left where text was removed
+    .trim();
+}
+
+/**
  * Pick the phone number to show for a customer, sourced only from the customer's
  * Main Contact in MYOB. The Default endpoint exposes the contact's Phone 1 /
  * Phone 2 slots (each with a *Type tag). We prefer a slot tagged "Cell"/"Mobile"
@@ -18,7 +32,21 @@ function pickContactPhone(contact) {
   ].filter((s) => typeof s.number === 'string' && s.number.trim());
 
   const cell = slots.find((s) => /cell|mobile/i.test(String(s.type ?? '')));
-  return (cell?.number ?? slots[0]?.number ?? '').trim();
+  return cleanPhoneNumber(cell?.number ?? slots[0]?.number ?? '');
+}
+
+/**
+ * Pick the customer's email. MYOB Acumatica may carry the address either on the
+ * Customer entity itself (top-level Email) or on its Main Contact (MainContact
+ * .Email) — in many companies only the latter is filled in. Prefer the customer-
+ * level email, fall back to the Main Contact's, else blank.
+ */
+function pickEmail(row) {
+  const top = fieldValue(row.Email);
+  if (typeof top === 'string' && top.trim()) return top.trim();
+  const contactEmail = fieldValue(row.MainContact?.Email);
+  if (typeof contactEmail === 'string' && contactEmail.trim()) return contactEmail.trim();
+  return '';
 }
 
 /**
@@ -31,12 +59,12 @@ async function fetchLiveCustomers() {
   // expanded entity if its fields are ALSO named in $select — otherwise
   // MainContact comes back empty and every phone is blank. So we must list the
   // MainContact phone subfields explicitly here.
-  const phoneSelect =
-    'MainContact/Phone1,MainContact/Phone1Type,MainContact/Phone2,MainContact/Phone2Type';
+  const contactSelect =
+    'MainContact/Email,MainContact/Phone1,MainContact/Phone1Type,MainContact/Phone2,MainContact/Phone2Type';
   let data;
   try {
     data = await myobClient.getEntity('Customer', {
-      $select: `CustomerID,CustomerName,Email,CreditLimit,${phoneSelect}`,
+      $select: `CustomerID,CustomerName,Email,CreditLimit,${contactSelect}`,
       $expand: 'MainContact',
       $top: 5000,
     });
@@ -51,13 +79,13 @@ async function fetchLiveCustomers() {
   const rows = Array.isArray(data) ? data : data?.value ?? [];
   return rows.map((r) => {
     const customerId = String(fieldValue(r.CustomerID) ?? '');
-    const email = fieldValue(r.Email);
+    const email = pickEmail(r);
     const phone = pickContactPhone(r.MainContact);
     return {
       customerId,
       customerName: fieldValue(r.CustomerName) || customerId,
       creditLimit: Number(fieldValue(r.CreditLimit)) || 0,
-      email: typeof email === 'string' ? email : '',
+      email,
       phone,
     };
   });
@@ -80,7 +108,9 @@ function decorate(raw, defaultEmail) {
         customerName: c.customerName || c.customerId,
         creditLimit: Number(c.creditLimit) || 0,
         phone: c.phoneOverride || c.phone || '',
-        email: finalEmail || defaultEmail,
+        // Show the customer's real email/phone from MYOB; leave blank when none
+        // is on file (don't substitute the default placeholder in the list).
+        email: finalEmail,
         usingDefaultEmail: !finalEmail,
         hasOverride: Boolean(overrideEmail || c.phoneOverride),
         lastSyncedAt: c.lastSyncedAt || null,
@@ -89,7 +119,11 @@ function decorate(raw, defaultEmail) {
     .sort((a, b) => a.customerName.localeCompare(b.customerName));
 }
 
-/** Bulk upsert MYOB rows into Mongo without touching emailOverride/phoneOverride. */
+/**
+ * Bulk upsert MYOB rows into Mongo. MYOB is the source of truth: every sync
+ * overwrites email/phone with the MYOB value AND clears any manual override so
+ * the synced value always shows through (blank in MYOB => blank here).
+ */
 async function upsertMyobIntoCache(raw) {
   if (!isDbConnected() || !raw.length) return;
   const now = new Date();
@@ -105,6 +139,9 @@ async function upsertMyobIntoCache(raw) {
             email: typeof c.email === 'string' ? c.email : '',
             phone: typeof c.phone === 'string' ? c.phone : '',
             creditLimit: Number(c.creditLimit) || 0,
+            // MYOB wins on every sync — drop manual edits so they can't mask it.
+            emailOverride: '',
+            phoneOverride: '',
             lastSyncedAt: now,
           },
         },
