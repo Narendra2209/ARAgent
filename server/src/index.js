@@ -2,7 +2,13 @@ import express from 'express';
 import cors from 'cors';
 import path from 'node:path';
 import { config } from './config.js';
-import { getArAgingSummary, toCsv, getCustomerDetail, getOpenInvoices } from './arAgingService.js';
+import {
+  getArAgingSummary,
+  toCsv,
+  getCustomerDetail,
+  getOpenInvoices,
+  importArAgingFromBuffer,
+} from './arAgingService.js';
 import { getCustomers, syncCustomersFromMyob } from './customerService.js';
 import { sendOverdueReminders } from './reminderService.js';
 import {
@@ -248,7 +254,8 @@ app.patch('/api/customers/:customerId', async (req, res) => {
 
 app.get('/api/ar-aging', async (req, res) => {
   try {
-    const summary = await getArAgingSummary({ branch: req.query.branch });
+    const refresh = ['1', 'true', 'yes'].includes(String(req.query.refresh).toLowerCase());
+    const summary = await getArAgingSummary({ branch: req.query.branch, refresh });
     res.json(summary);
   } catch (err) {
     console.error('AR aging fetch failed:', err.response?.data ?? err.message);
@@ -258,6 +265,32 @@ app.get('/api/ar-aging', async (req, res) => {
     });
   }
 });
+
+// Upload a MYOB "AR Aging (Detailed)" .xlsx; parse it and store it as the
+// source of truth for the dashboard. Admin only. The file is sent as raw bytes
+// (octet-stream) so we don't need a multipart parser.
+app.post(
+  '/api/ar-aging/import',
+  requireAdmin,
+  express.raw({ type: ['application/octet-stream', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'], limit: '50mb' }),
+  async (req, res) => {
+    try {
+      if (!req.body || !req.body.length) {
+        return res.status(400).json({ error: 'No file received. Attach the .xlsx export.' });
+      }
+      const summary = await importArAgingFromBuffer(req.body);
+      res.json({
+        ok: true,
+        asOfDate: summary.asOfDate,
+        customerCount: summary.kpis.customerCount,
+        totalReceivables: summary.kpis.totalReceivables,
+      });
+    } catch (err) {
+      console.error('AR aging import failed:', err.message);
+      res.status(400).json({ error: 'Failed to import AR Aging file', detail: err.message });
+    }
+  }
+);
 
 app.get('/api/invoices', async (req, res) => {
   try {

@@ -140,17 +140,29 @@ class MyobClient {
   }
 
   /**
-   * GET with detection of MYOB's "concurrent API logins exceeded" condition,
-   * which manifests as a 302 redirect to an HTML error page rather than JSON.
-   * On that condition we drop the token and retry once after a short delay.
+   * GET with detection of MYOB's "concurrent API logins exceeded" condition.
+   * When the API seat is contended MYOB does NOT return clean JSON — it either
+   * 302-redirects to an HTML error page, or (silently, and far more dangerously)
+   * returns a 200 with an empty/whitespace body. The empty-body case previously
+   * slipped through as "valid" data, so the caller saw zero invoices and the
+   * dashboard showed $0.00 with no error. Treat ANY non-JSON-object string body
+   * as a session error: drop the token, wait for the seat to free, retry once,
+   * and throw a clear error if it's still bad so the UI surfaces it.
    */
   async getJson(url, params) {
     for (let attempt = 0; attempt < 2; attempt++) {
       const headers = await this.authHeaders();
       const res = await this.http.get(url, { params, headers });
-      const looksLikeHtml =
-        typeof res.data === 'string' && /<html|Object moved|Error\.aspx/i.test(res.data);
-      if (!looksLikeHtml) return res.data;
+
+      // A healthy entity/OData response is a parsed object/array. A string body
+      // means axios couldn't JSON-parse it — an HTML error page or an empty body
+      // returned when the API seat is busy. Either way it is NOT usable data.
+      const body = res.data;
+      const isBadBody =
+        body == null ||
+        typeof body === 'string' ||
+        (typeof body === 'object' && Object.keys(body).length === 0 && !Array.isArray(body));
+      if (!isBadBody) return body;
 
       // Session/seat problem: force a fresh token and wait for the seat to free.
       this.token = null;
@@ -159,8 +171,9 @@ class MyobClient {
       if (attempt === 0) await new Promise((r) => setTimeout(r, 4000));
     }
     throw new Error(
-      'MYOB returned a session error (likely the concurrent API login limit). ' +
-        'Try again in a moment, or reduce other API usage.'
+      'MYOB returned an empty or non-JSON response (likely the concurrent API ' +
+        'login/seat limit). Try again in a moment, or reduce other API usage ' +
+        '(e.g. a second server instance sharing the same MYOB_CLIENT_ID).'
     );
   }
 

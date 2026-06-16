@@ -5,6 +5,7 @@ import LoginPage from './components/LoginPage.jsx';
 import Sidebar from './components/Sidebar.jsx';
 import Topbar from './components/Topbar.jsx';
 import Dashboard from './components/Dashboard.jsx';
+import Loader from './components/Loader.jsx';
 import CustomersView from './components/CustomersView.jsx';
 import CustomerDetail from './components/CustomerDetail.jsx';
 import InvoicesView from './components/InvoicesView.jsx';
@@ -50,11 +51,11 @@ function Hub({ user, onLogout }) {
     setView(v);
   }, []);
 
-  const runReport = useCallback(async (branchArg) => {
+  const runReport = useCallback(async (branchArg, { refresh = false } = {}) => {
     setLoading(true);
     setError(null);
     try {
-      setData(await fetchArAging(branchArg));
+      setData(await fetchArAging(branchArg, { refresh }));
     } catch (e) {
       setError(e.message);
     } finally {
@@ -81,7 +82,7 @@ function Hub({ user, onLogout }) {
     setSyncing(true);
     try {
       await syncCustomers();
-      await runReport(branch);
+      await runReport(branch, { refresh: true });
     } catch (e) {
       setError(e.message);
     } finally {
@@ -113,7 +114,7 @@ function Hub({ user, onLogout }) {
           onBranchChange={onBranchChange}
           onSync={onSync}
           syncing={syncing}
-          onRefresh={() => runReport(branch)}
+          onRefresh={() => runReport(branch, { refresh: true })}
           loading={loading}
           user={user}
           onLogout={onLogout}
@@ -132,7 +133,7 @@ function Hub({ user, onLogout }) {
           ) : (
             <>
               {safeView === 'dashboard' && (
-                <>
+                <div className="relative min-h-[60vh]">
                   {error && (
                     <div className="mb-4 px-4 py-3 rounded bg-red-50 border border-red-200 text-sm text-red-800">
                       <strong>Couldn’t load the report.</strong> {error}
@@ -141,11 +142,8 @@ function Hub({ user, onLogout }) {
                       </div>
                     </div>
                   )}
-                  {loading && !data && (
-                    <div className="px-4 py-16 text-center text-stone-400">
-                      Loading AR Aging report…
-                    </div>
-                  )}
+                  {/* First load: full inline loader. */}
+                  {loading && !data && <Loader message="Loading AR Aging report from MYOB…" />}
                   {data && (
                     <Dashboard
                       data={data}
@@ -153,7 +151,11 @@ function Hub({ user, onLogout }) {
                       onOpenCustomer={setCustomerId}
                     />
                   )}
-                </>
+                  {/* Refresh / Sync MYOB while data is already shown: overlay spinner. */}
+                  {(loading || syncing) && data && (
+                    <Loader overlay message={syncing ? 'Syncing from MYOB…' : 'Refreshing from MYOB…'} />
+                  )}
+                </div>
               )}
 
               {safeView === 'customers' && <CustomersView onOpenCustomer={setCustomerId} />}

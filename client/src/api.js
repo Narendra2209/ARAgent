@@ -52,11 +52,25 @@ export const deleteUserApi = (id) =>
 
 // ---------------- AR aging ----------------
 
-export const fetchArAging = (branch) =>
-  json(`/api/ar-aging${branch ? `?branch=${encodeURIComponent(branch)}` : ''}`);
+export const fetchArAging = (branch, { refresh = false } = {}) => {
+  const params = new URLSearchParams();
+  if (branch) params.set('branch', branch);
+  if (refresh) params.set('refresh', '1');
+  const qs = params.toString();
+  return json(`/api/ar-aging${qs ? `?${qs}` : ''}`);
+};
 export const exportCsvUrl = (branch) =>
   withToken(`/api/ar-aging/export.csv${branch ? `?branch=${encodeURIComponent(branch)}` : ''}`);
 export const fetchHealth = () => json('/api/health');
+
+// Upload a MYOB "AR Aging (Detailed)" .xlsx export; the server parses and stores
+// it as the dashboard's source of truth. Sent as raw bytes (no multipart).
+export const importArAging = (file) =>
+  json('/api/ar-aging/import', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/octet-stream' },
+    body: file,
+  });
 
 export async function fetchEmailLog(limit = 12) {
   const res = await request(`/api/email-log?limit=${limit}`).catch((e) => {

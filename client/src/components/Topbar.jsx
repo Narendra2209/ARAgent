@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
-import { exportCsvUrl } from '../api.js';
+import { useEffect, useRef, useState } from 'react';
+import { exportCsvUrl, importArAging } from '../api.js';
+import { Spinner } from './Loader.jsx';
 
 const TITLES = {
   dashboard: 'Dashboard',
@@ -42,6 +43,29 @@ export default function Topbar({
 }) {
   const [overlay, setOverlay] = useState(null); // 'search' | 'add' | 'notif' | null
   const [q, setQ] = useState('');
+  const [importing, setImporting] = useState(false);
+  const fileRef = useRef(null);
+
+  const isAdmin = user?.role === 'admin';
+
+  const onImportFile = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // allow re-selecting the same file
+    if (!file) return;
+    setImporting(true);
+    try {
+      const res = await importArAging(file);
+      alert(
+        `Imported MYOB AR Aging as of ${res.asOfDate}: ${res.customerCount} customers, ` +
+          `$${Number(res.totalReceivables).toLocaleString()} total.`
+      );
+      onRefresh?.();
+    } catch (err) {
+      alert(`Import failed: ${err.message}`);
+    } finally {
+      setImporting(false);
+    }
+  };
 
   // ⌘K / Ctrl-K opens search; Escape closes any overlay.
   useEffect(() => {
@@ -84,6 +108,9 @@ export default function Topbar({
         {source === 'mock' && (
           <span className="text-[11px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-200">sample data</span>
         )}
+        {source === 'imported-xlsx' && (
+          <span className="text-[11px] px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-200" title="Figures from an imported MYOB AR Aging (Detailed) export">MYOB import</span>
+        )}
       </div>
 
       {view === 'dashboard' && branches?.length > 0 && (
@@ -111,10 +138,32 @@ export default function Topbar({
         {view === 'dashboard' && (
           <a href={exportCsvUrl(branch)} className="text-sm text-stone-600 hover:text-stone-900">Export CSV</a>
         )}
-        <button onClick={onRefresh} disabled={loading} className="text-sm text-stone-600 hover:text-stone-900 disabled:opacity-50">
+        {view === 'dashboard' && isAdmin && (
+          <>
+            <input
+              ref={fileRef}
+              type="file"
+              accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+              className="hidden"
+              onChange={onImportFile}
+            />
+            <button
+              onClick={() => fileRef.current?.click()}
+              disabled={importing}
+              title="Upload a MYOB AR Aging (Detailed) .xlsx export"
+              className="text-sm text-stone-600 hover:text-stone-900 disabled:opacity-50 inline-flex items-center gap-1.5"
+            >
+              {importing && <Spinner className="h-3.5 w-3.5 text-stone-500" />}
+              {importing ? 'Importing…' : 'Import AR Aging'}
+            </button>
+          </>
+        )}
+        <button onClick={onRefresh} disabled={loading} className="text-sm text-stone-600 hover:text-stone-900 disabled:opacity-50 inline-flex items-center gap-1.5">
+          {loading && <Spinner className="h-3.5 w-3.5 text-stone-500" />}
           {loading ? 'Refreshing…' : 'Refresh'}
         </button>
-        <button onClick={onSync} disabled={syncing} className="text-sm text-stone-600 hover:text-stone-900 disabled:opacity-50">
+        <button onClick={onSync} disabled={syncing} className="text-sm text-stone-600 hover:text-stone-900 disabled:opacity-50 inline-flex items-center gap-1.5">
+          {syncing && <Spinner className="h-3.5 w-3.5 text-stone-500" />}
           {syncing ? 'Syncing…' : 'Sync MYOB'}
         </button>
 

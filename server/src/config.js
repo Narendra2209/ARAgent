@@ -38,8 +38,21 @@ export const config = {
 
   arAging: {
     strategy: (process.env.AR_AGING_STRATEGY || 'computed').toLowerCase(),
+    // Where the dashboard's aged figures come from:
+    //   'computed'  = recompute buckets from open invoices (default)
+    //   'imported'  = serve MYOB's OWN figures from an imported AR Aging
+    //                 (Detailed) .xlsx export, stored in MongoDB — exact match.
+    source: (process.env.AR_AGING_SOURCE || 'computed').toLowerCase(),
     giName: process.env.MYOB_GI_NAME || '',
+    // Pre-aged AR Aging Summary Generic Inquiry (exposed via OData). When set,
+    // the dashboard reads MYOB's OWN per-customer Current / 1-30 / 31-60 / 61-90
+    // / 90+ / Balance figures straight through, so the cards match MYOB's AR
+    // Aging report exactly instead of recomputing buckets from open invoices.
+    agingGi: process.env.MYOB_AGING_GI || '',
     asOfDate: process.env.AR_AS_OF_DATE || '', // YYYY-MM-DD or blank = today
+    // Business timezone the aging "today" is computed in, so the as-of date
+    // matches MYOB (AEST) no matter where the server runs. IANA name.
+    timezone: process.env.AR_TIMEZONE || 'Australia/Sydney',
   },
 
   customers: {
