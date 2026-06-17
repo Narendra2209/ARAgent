@@ -16,6 +16,10 @@ import { withRetry } from './mailRetry.js';
  */
 let token = null;
 let tokenExpiresAt = 0;
+// Shared promise for an in-progress token fetch. Concurrent callers (e.g. the
+// boot pre-warm and the first page-load health check) piggyback on one request
+// instead of each firing its own slow outbound call on a cold instance.
+let inFlightToken = null;
 
 /** Which GRAPH_* values are still blank (empty array = fully configured). */
 export function missingGraphConfig() {
@@ -60,28 +64,36 @@ export async function checkGraphAuth() {
 }
 
 async function getToken() {
-  const now = Date.now();
-  if (token && now < tokenExpiresAt - 30_000) return token;
+  if (token && Date.now() < tokenExpiresAt - 30_000) return token;
+  if (inFlightToken) return inFlightToken;
 
-  const body = new URLSearchParams({
-    client_id: config.graph.clientId,
-    client_secret: config.graph.clientSecret,
-    scope: 'https://graph.microsoft.com/.default',
-    grant_type: 'client_credentials',
-  });
+  inFlightToken = (async () => {
+    const body = new URLSearchParams({
+      client_id: config.graph.clientId,
+      client_secret: config.graph.clientSecret,
+      scope: 'https://graph.microsoft.com/.default',
+      grant_type: 'client_credentials',
+    });
 
-  const res = await axios.post(
-    `https://login.microsoftonline.com/${config.graph.tenantId}/oauth2/v2.0/token`,
-    body,
-    {
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      timeout: 30_000,
-    }
-  );
+    const res = await axios.post(
+      `https://login.microsoftonline.com/${config.graph.tenantId}/oauth2/v2.0/token`,
+      body,
+      {
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        timeout: 30_000,
+      }
+    );
 
-  token = res.data.access_token;
-  tokenExpiresAt = now + (Number(res.data.expires_in) || 3600) * 1000;
-  return token;
+    token = res.data.access_token;
+    tokenExpiresAt = Date.now() + (Number(res.data.expires_in) || 3600) * 1000;
+    return token;
+  })();
+
+  try {
+    return await inFlightToken;
+  } finally {
+    inFlightToken = null; // clear so a failed fetch can be retried next call
+  }
 }
 
 /** Split a "a@x.com; b@y.com" string into individual recipient addresses. */

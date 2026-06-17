@@ -45,6 +45,12 @@ import { Comment } from './models/Comment.js';
 // Fire and forget — app still works if Mongo is unreachable.
 connectDb();
 
+// Pre-warm the mail auth token at boot so the first page-load health check finds
+// it cached instead of paying a cold outbound auth round-trip (Render's free tier
+// wipes the in-memory cache on every spin-down). Safe no-op if mail isn't
+// configured. The page-load check shares this in-flight fetch (see getToken).
+checkMailAuth().catch(() => {});
+
 const app = express();
 app.use(cors());
 // Limit raised so a base64-encoded signature image fits in the JSON body.
@@ -389,7 +395,7 @@ app.get('/api/reminders/health', async (_req, res) => {
   // answer 200 with a degraded payload so the dashboard never sees a 5xx here.
   try {
     const timeout = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error('Mail health check timed out')), 8000).unref()
+      setTimeout(() => reject(new Error('Mail health check timed out')), 20_000).unref()
     );
     const result = await Promise.race([checkMailAuth(), timeout]);
     res.json({ transport: mailTransport, ...result });
