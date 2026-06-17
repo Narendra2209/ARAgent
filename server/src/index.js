@@ -382,10 +382,19 @@ app.put('/api/settings/reminder-email', async (req, res) => {
 });
 
 app.get('/api/reminders/health', async (_req, res) => {
+  // This is a non-critical status badge fired on every page load. The mail check
+  // can make an outbound auth round-trip (e.g. a Microsoft Graph token fetch)
+  // that, when the cache is cold, may take long enough that the upstream proxy
+  // (Vercel) gives up and returns a 502. Bound it with a short timeout and always
+  // answer 200 with a degraded payload so the dashboard never sees a 5xx here.
   try {
-    res.json({ transport: mailTransport, ...(await checkMailAuth()) });
+    const timeout = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('Mail health check timed out')), 8000).unref()
+    );
+    const result = await Promise.race([checkMailAuth(), timeout]);
+    res.json({ transport: mailTransport, ...result });
   } catch (err) {
-    res.status(500).json({ error: 'Health check failed', detail: err.message });
+    res.json({ transport: mailTransport, configured: true, tokenOk: false, error: err.message });
   }
 });
 
