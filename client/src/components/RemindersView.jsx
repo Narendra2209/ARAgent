@@ -85,10 +85,29 @@ export default function RemindersView() {
   const testConnection = async () => {
     setBusy('health');
     setHealth(null);
+    // The backend runs on a free-tier host that sleeps after idle. The first
+    // check after a cold start can time out while the mail token is still being
+    // fetched; that fetch is cached server-side, so a couple of quiet retries a
+    // few seconds apart normally land on a warm "Connected". Only surface a hard
+    // error once we've stopped warming up.
+    const MAX_ATTEMPTS = 4;
     try {
-      setHealth(await checkEmailHealth());
-    } catch (e) {
-      setHealth({ configured: true, tokenOk: false, error: e.message });
+      for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+        let result;
+        try {
+          result = await checkEmailHealth();
+        } catch (e) {
+          result = { configured: true, tokenOk: false, warming: true, error: e.message };
+        }
+        const stillWarming = !result.tokenOk && result.warming;
+        if (!stillWarming || attempt === MAX_ATTEMPTS) {
+          setHealth(result);
+          break;
+        }
+        // Show a soft "warming up" banner and wait before retrying.
+        setHealth({ ...result, warming: true });
+        await new Promise((r) => setTimeout(r, 3000));
+      }
     } finally {
       setBusy(null);
     }
@@ -261,13 +280,17 @@ export default function RemindersView() {
           <div
             className={`px-4 py-3 rounded border text-sm ${health.tokenOk
               ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
-              : 'bg-red-50 border-red-200 text-red-800'
+              : !health.tokenOk && health.warming
+                ? 'bg-amber-50 border-amber-200 text-amber-800'
+                : 'bg-red-50 border-red-200 text-red-800'
               }`}
           >
             {!health.configured ? (
               <><strong>Not configured.</strong> Add to server/.env: {health.missing?.join(', ')}.</>
             ) : health.tokenOk ? (
               <><strong>✅ Connected to Microsoft 365.</strong> Sending from <strong>{health.sender}</strong>.</>
+            ) : health.warming ? (
+              <><strong>⏳ Waking the mail service…</strong> The server was idle and is warming up. Retrying automatically.</>
             ) : (
               <><strong>❌ Couldn’t authenticate.</strong> {health.error}</>
             )}

@@ -400,7 +400,18 @@ app.get('/api/reminders/health', async (_req, res) => {
     const result = await Promise.race([checkMailAuth(), timeout]);
     res.json({ transport: mailTransport, ...result });
   } catch (err) {
-    res.json({ transport: mailTransport, configured: true, tokenOk: false, error: err.message });
+    // A timeout here is almost always the free-tier instance still warming up:
+    // the token fetch the timeout raced is left in-flight and gets cached, so a
+    // retry a few seconds later normally succeeds. Flag it as `warming` (not an
+    // auth failure) so the client retries quietly instead of crying wolf.
+    const warming = /timed out/i.test(err.message || '');
+    res.json({
+      transport: mailTransport,
+      configured: true,
+      tokenOk: false,
+      warming,
+      error: err.message,
+    });
   }
 });
 
