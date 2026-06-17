@@ -158,6 +158,7 @@ export default function Topbar({
             </button>
           </>
         )}
+        {/* Refresh / Sync MYOB buttons hidden (commented out for easy re-enable)
         <button onClick={onRefresh} disabled={loading} className="text-sm text-stone-600 hover:text-stone-900 disabled:opacity-50 inline-flex items-center gap-1.5">
           {loading && <Spinner className="h-3.5 w-3.5 text-stone-500" />}
           {loading ? 'Refreshing…' : 'Refresh'}
@@ -166,6 +167,7 @@ export default function Topbar({
           {syncing && <Spinner className="h-3.5 w-3.5 text-stone-500" />}
           {syncing ? 'Syncing…' : 'Sync MYOB'}
         </button>
+        */}
 
         <div className="w-px h-5 bg-stone-200" />
         <div className="flex items-center gap-2">
