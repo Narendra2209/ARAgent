@@ -50,8 +50,13 @@ function getTransporter() {
     maxMessages: 50, // recycle the connection before O365 force-closes it
     rateLimit: 20, // <= the ~30 msg/min cap; nodemailer paces sends for us
     rateDelta: 60_000, // window (ms) the rateLimit applies over
-    connectionTimeout: 30_000,
-    greetingTimeout: 30_000,
+    // connection/greeting timeouts are kept under the health check's race window
+    // (server/src/index.js) so a blocked outbound SMTP port — the classic
+    // free-tier-host failure — surfaces as a real "connection timeout" error
+    // instead of being masked by the outer "timed out" guard. socketTimeout
+    // stays generous for the actual (slow) batch sends.
+    connectionTimeout: 12_000,
+    greetingTimeout: 12_000,
     socketTimeout: 60_000,
   });
   return transporter;

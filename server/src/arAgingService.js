@@ -548,8 +548,8 @@ export async function importArAgingFromBuffer(buffer) {
   const parsed = parseArAgingDetailXlsx(buffer);
   if (!parsed.customers.length) {
     throw new Error(
-      'No customer rows found in the file. Make sure it is the MYOB "AR Aging ' +
-        '(Detailed)" Excel export.'
+      'No customer rows found in the file. Make sure it is a MYOB "AR Aging" ' +
+        'Excel export (Summary or Detailed).'
     );
   }
   if (!parsed.asOfDate) parsed.asOfDate = ymd(resolveAsOf());
@@ -589,6 +589,45 @@ async function getArAgingSummaryFromImport() {
   });
 }
 
+/**
+ * Serve the most recently stored AR aging snapshot from MongoDB WITHOUT calling
+ * MYOB. Normal page loads use this so we don't burn MYOB's single API seat on
+ * every view (which collides with any other instance sharing MYOB_CLIENT_ID and
+ * surfaces as the "empty/non-JSON response" seat error). Live data is pulled
+ * only when the admin clicks "Sync from MYOB" (refresh=true). Returns null when
+ * no snapshot exists yet, so the caller can do a one-off live fetch instead of
+ * showing an empty dashboard. Branch filtering isn't applied here because the
+ * snapshot has no per-customer branch (and this tenant's Invoice contract
+ * doesn't expose Branch anyway).
+ */
+async function getStoredAgingSnapshot() {
+  if (!isDbConnected()) return null;
+  const snap = await ArAgingSnapshot.findOne({})
+    .sort({ asOfDate: -1, lastCapturedAt: -1 })
+    .lean();
+  if (!snap || !(snap.customers || []).length) return null;
+  const customers = snap.customers.map((c) => ({ ...c })).sort((a, b) => b.total - a.total);
+  assignTiers(customers);
+  return {
+    asOfDate: snap.asOfDate,
+    reportFormat: 'Summary',
+    source: snap.source || 'computed',
+    fromCache: true, // figures are from the last sync, not a fresh MYOB pull
+    buckets: BUCKETS.map(({ key, label }) => ({ key, label })),
+    branches: [],
+    selectedBranch: null,
+    customers,
+    totals: snap.totals,
+    kpis: {
+      totalReceivables: snap.totalReceivables,
+      totalOverdue: snap.totalOverdue,
+      overduePct: snap.overduePct,
+      customerCount: snap.customerCount,
+      oldestBalanceDays: snap.oldestBalanceDays,
+    },
+  };
+}
+
 /** Build the AR Aging Summary report from open documents. */
 export async function getArAgingSummary({ branch, refresh = false } = {}) {
   // Serve MYOB's own imported figures (exact match) when configured to.
@@ -602,6 +641,16 @@ export async function getArAgingSummary({ branch, refresh = false } = {}) {
     const summary = await getArAgingSummaryFromGi({ branch, refresh });
     persistSnapshot(summary);
     return summary;
+  }
+
+  // Live (computed/odata) path. To avoid MYOB's single API seat on every page
+  // load, serve the last stored snapshot unless the caller explicitly asked to
+  // refresh — i.e. only the "Sync from MYOB" button pulls live data.
+  if (!refresh && !config.useMockData) {
+    const stored = await getStoredAgingSnapshot();
+    if (stored) return stored;
+    // No snapshot yet: fall through to a one-off live fetch so the first load
+    // (before anyone has synced) still shows real data.
   }
 
   const asOf = resolveAsOf();

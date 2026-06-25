@@ -80,7 +80,11 @@ async function getToken() {
       body,
       {
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        timeout: 30_000,
+        // A token fetch normally completes in ~1s. Keep this under the health
+        // check's race window (server/src/index.js) so a genuine failure — bad
+        // credentials, blocked egress — surfaces as its real error instead of
+        // being masked by the outer "timed out" guard.
+        timeout: 12_000,
       }
     );
 

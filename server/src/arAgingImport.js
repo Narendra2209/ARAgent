@@ -11,12 +11,19 @@ import { BUCKETS } from './arAgingService.js';
  * We only need sharedStrings + the sheet, read positionally, so we unzip with
  * fflate and walk the row/cell XML ourselves.
  *
- * Export layout (one block per customer):
- *   [CustomerID, CustomerName]                         <- starts a customer
- *   Doc.Type | Ref | CustRef | Branch | DocDate | DueDate | Current | 1-30 | 31-60 | 61-90 | Over90 | Balance
- *   ...one such row per open document...
- * The five bucket columns already hold MYOB's aged amounts (credit memos come
- * through negative), so we just sum them per customer.
+ * Two MYOB layouts are accepted, because users export either report:
+ *
+ *  1. AR Aging (Detailed) — one block per customer:
+ *       [CustomerID, CustomerName]                      <- starts a customer
+ *       Doc.Type | Ref | CustRef | Branch | DocDate | DueDate | Current | 1-30 | 31-60 | 61-90 | Over90 | Balance
+ *       ...one such row per open document...
+ *
+ *  2. AR Aging (Summary) — one row per customer, buckets pre-aged:
+ *       CustomerID | _ | CustomerName | _ | _ | _ | Current | 1-30 | 31-60 | 61-90 | Over90 | Balance
+ *
+ * In both, the five bucket columns (indices 6-10) already hold MYOB's aged
+ * amounts (credit memos come through negative) and index 11 is the balance, so
+ * we just sum them per customer.
  */
 
 // Document types MYOB prints in the "Doc. Type" column of a detail row.
@@ -101,6 +108,41 @@ function parseSheetRows(xml, strings) {
   return rows;
 }
 
+const _normHdr = (v) => String(v ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
+
+/**
+ * Locate the aged-bucket header row (`Customer ... Current ... Balance`) and map
+ * each field we need to a column index. Doing this by label — instead of by a
+ * fixed position — lets one parser handle every MYOB variant: the Detailed
+ * export, the wide Summary (blank spacer columns, buckets at 6-11) and the
+ * compact Summary (no spacers, buckets at 2-7). `mode` is 'detailed' when the
+ * header carries a "Doc. Type" column, else 'summary'. Returns null if no
+ * recognizable header is found (caller falls back to fixed positions).
+ */
+function resolveLayout(rows) {
+  for (let i = 0; i < Math.min(rows.length, 40); i++) {
+    const cells = rows[i].map(_normHdr);
+    const find = (re) => cells.findIndex((c) => re.test(c));
+    const current = cells.findIndex((c) => c === 'current');
+    const total = cells.findIndex((c) => c === 'balance');
+    if (current < 0 || total < 0) continue; // not the bucket header
+    const docTypeCol = cells.findIndex((c) => c === 'doc. type' || c === 'doc type');
+    return {
+      mode: docTypeCol >= 0 ? 'detailed' : 'summary',
+      idCol: Math.max(0, cells.findIndex((c) => c === 'customer')),
+      nameCol: cells.findIndex((c) => c === 'customer name'),
+      current,
+      b1_30: find(/^1 ?- ?30/),
+      b31_60: find(/^31 ?- ?60/),
+      b61_90: find(/^61 ?- ?90/),
+      b90plus: find(/over ?90|^90 ?\+|^91/),
+      total,
+      docTypeCol,
+    };
+  }
+  return null;
+}
+
 /**
  * Parse the export buffer into a dashboard snapshot:
  * { asOfDate, customers[], totals, kpis, invoiceCount }.
@@ -129,40 +171,68 @@ export function parseArAgingDetailXlsx(buffer) {
     }
   }
 
+  // Resolve column positions from the header; fall back to MYOB's classic
+  // Detailed positions (buckets 6-11) if no header row can be located.
+  const L = resolveLayout(rows) ?? {
+    mode: 'detailed', idCol: 0, nameCol: 2,
+    current: 6, b1_30: 7, b31_60: 8, b61_90: 9, b90plus: 10, total: 11, docTypeCol: 0,
+  };
+
   const byCustomer = new Map();
   let current = null;
   let invoiceCount = 0;
   const idRe = /^C\d{3,}$/;
 
+  const ensureCustomer = (id, name) => {
+    if (!byCustomer.has(id)) {
+      byCustomer.set(id, {
+        customerId: id,
+        customerName: String(name ?? id) || id,
+        current: 0, b1_30: 0, b31_60: 0, b61_90: 0, b90plus: 0,
+        total: 0, oldestDays: 0,
+      });
+    }
+    return byCustomer.get(id);
+  };
+  const addBuckets = (c, row) => {
+    c.current += num(row[L.current]);
+    c.b1_30 += num(row[L.b1_30]);
+    c.b31_60 += num(row[L.b31_60]);
+    c.b61_90 += num(row[L.b61_90]);
+    c.b90plus += num(row[L.b90plus]);
+    c.total += num(row[L.total]);
+    invoiceCount += 1;
+  };
+  // A row carries aged amounts when at least one mapped bucket/balance column
+  // holds a finite number. Distinguishes a Summary customer row (buckets filled)
+  // from a header/label row (none).
+  const hasBucketData = (row) =>
+    [L.current, L.b1_30, L.b31_60, L.b61_90, L.b90plus, L.total].some((i) => {
+      const v = i >= 0 ? row[i] : null;
+      return v != null && v !== '' && Number.isFinite(Number(v));
+    });
+
   for (const row of rows) {
     const nonEmpty = row.filter((v) => v != null && v !== '');
-    // Customer header: exactly [CustomerID, CustomerName].
-    if (
-      nonEmpty.length === 2 &&
-      typeof nonEmpty[0] === 'string' &&
-      idRe.test(String(nonEmpty[0]).trim())
-    ) {
-      const id = String(nonEmpty[0]).trim();
-      if (!byCustomer.has(id)) {
-        byCustomer.set(id, {
-          customerId: id,
-          customerName: String(nonEmpty[1] ?? id),
-          current: 0, b1_30: 0, b31_60: 0, b61_90: 0, b90plus: 0,
-          total: 0, oldestDays: 0,
-        });
+
+    if (L.mode === 'summary') {
+      // One self-contained row per customer: ID in idCol, name in nameCol,
+      // pre-aged buckets in the mapped columns. Record it directly.
+      const id = typeof row[L.idCol] === 'string' ? row[L.idCol].trim() : '';
+      if (idRe.test(id) && hasBucketData(row)) {
+        addBuckets(ensureCustomer(id, L.nameCol >= 0 ? row[L.nameCol] : id), row);
       }
-      current = byCustomer.get(id);
       continue;
     }
-    // Detail row: first cell is a known doc type and the bucket columns exist.
-    if (current && row.length >= 12 && typeof row[0] === 'string' && DOC_TYPES.has(row[0].trim())) {
-      current.current += num(row[6]);
-      current.b1_30 += num(row[7]);
-      current.b31_60 += num(row[8]);
-      current.b61_90 += num(row[9]);
-      current.b90plus += num(row[10]);
-      current.total += num(row[11]);
-      invoiceCount += 1;
+
+    // Detailed layout — customer header: exactly [CustomerID, CustomerName].
+    if (nonEmpty.length === 2 && typeof nonEmpty[0] === 'string' && idRe.test(String(nonEmpty[0]).trim())) {
+      current = ensureCustomer(String(nonEmpty[0]).trim(), nonEmpty[1]);
+      continue;
+    }
+    // Detailed layout — detail row: the doc-type column holds a known doc type.
+    if (current && typeof row[L.docTypeCol] === 'string' && DOC_TYPES.has(row[L.docTypeCol].trim())) {
+      addBuckets(current, row);
     }
   }
 

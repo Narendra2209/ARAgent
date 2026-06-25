@@ -394,8 +394,12 @@ app.get('/api/reminders/health', async (_req, res) => {
   // (Vercel) gives up and returns a 502. Bound it with a short timeout and always
   // answer 200 with a degraded payload so the dashboard never sees a 5xx here.
   try {
+    // Sits just above the underlying auth-check timeouts (12s in the Graph/SMTP
+    // clients) so a genuine failure wins the race and surfaces its real error;
+    // this guard only fires for a true cold-start stall, which we report as
+    // "warming" rather than an auth failure.
     const timeout = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error('Mail health check timed out')), 20_000).unref()
+      setTimeout(() => reject(new Error('Mail health check timed out')), 16_000).unref()
     );
     const result = await Promise.race([checkMailAuth(), timeout]);
     res.json({ transport: mailTransport, ...result });
