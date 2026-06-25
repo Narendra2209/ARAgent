@@ -36,7 +36,7 @@ export default function Topbar({
   onBranchChange,
   onSync,
   syncing,
-  onRefresh,
+  onReload,
   loading,
   user,
   onLogout,
@@ -59,7 +59,7 @@ export default function Topbar({
         `Imported MYOB AR Aging as of ${res.asOfDate}: ${res.customerCount} customers, ` +
           `$${Number(res.totalReceivables).toLocaleString()} total.`
       );
-      onRefresh?.();
+      onReload?.();
     } catch (err) {
       alert(`Import failed: ${err.message}`);
     } finally {
@@ -158,16 +158,17 @@ export default function Topbar({
             </button>
           </>
         )}
-        {/* Refresh / Sync MYOB buttons hidden (commented out for easy re-enable)
-        <button onClick={onRefresh} disabled={loading} className="text-sm text-stone-600 hover:text-stone-900 disabled:opacity-50 inline-flex items-center gap-1.5">
-          {loading && <Spinner className="h-3.5 w-3.5 text-stone-500" />}
-          {loading ? 'Refreshing…' : 'Refresh'}
-        </button>
-        <button onClick={onSync} disabled={syncing} className="text-sm text-stone-600 hover:text-stone-900 disabled:opacity-50 inline-flex items-center gap-1.5">
-          {syncing && <Spinner className="h-3.5 w-3.5 text-stone-500" />}
-          {syncing ? 'Syncing…' : 'Sync MYOB'}
-        </button>
-        */}
+        {view === 'dashboard' && isAdmin && (
+          <button
+            onClick={onSync}
+            disabled={syncing || loading}
+            title="Sync customers and AR Aging data from MYOB"
+            className="text-sm px-3 py-1.5 rounded border border-orange-600 text-orange-700 hover:bg-orange-50 disabled:opacity-50 inline-flex items-center gap-1.5"
+          >
+            {syncing && <Spinner className="h-3.5 w-3.5 text-orange-600" />}
+            {syncing ? 'Syncing…' : 'Sync MYOB'}
+          </button>
+        )}
 
         <div className="w-px h-5 bg-stone-200" />
         <div className="flex items-center gap-2">

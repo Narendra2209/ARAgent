@@ -114,7 +114,7 @@ function Hub({ user, onLogout }) {
           onBranchChange={onBranchChange}
           onSync={onSync}
           syncing={syncing}
-          onRefresh={() => runReport(branch, { refresh: true })}
+          onReload={() => runReport(branch)}
           loading={loading}
           user={user}
           onLogout={onLogout}
