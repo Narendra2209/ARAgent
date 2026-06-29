@@ -277,11 +277,14 @@ async function fetchODataDocuments() {
     .map((r) => {
       const customerId = pick(r, 'CustomerID', 'Customer', 'AcctCD') ?? '(unknown)';
       const docType = String(pick(r, 'DocType', 'Type') ?? 'Invoice');
-      // The GI's open-balance (CuryDocBal) comes through positive even for credit
-      // memos, so flip those negative to reduce the receivable — same rule as the
-      // computed path, which matched MYOB's report bucket-for-bucket.
+      // The GI's open-balance (CuryDocBal) comes through positive for EVERY doc
+      // type. Credit memos, payments and prepayments REDUCE the receivable, so
+      // they must age negative; invoices and debit memos stay positive. Without
+      // negating payments/prepayments they inflate Current (they carry no due
+      // date, so they all land there) — which is exactly what was throwing off
+      // the Current bucket and the total.
       const rawBalance = Number(pick(r, 'Balance', 'OpenBalance', 'CuryBalance', 'CuryDocBal')) || 0;
-      const balance = /credit/i.test(docType) ? -Math.abs(rawBalance) : rawBalance;
+      const balance = /credit|payment|prepay/i.test(docType) ? -Math.abs(rawBalance) : rawBalance;
       // Credit memos usually have no due date; fall back to the doc date, and if
       // neither exists they age as Current (matches MYOB, which carries open
       // credits in Current). Don't drop these rows.
@@ -292,7 +295,11 @@ async function fetchODataDocuments() {
         docType,
         refNbr: String(pick(r, 'RefNbr', 'ReferenceNbr') ?? ''),
         branch: String(pick(r, 'Branch', 'BranchID', 'BranchCD') ?? ''),
-        date: pick(r, 'DocDate', 'Date') ?? null,
+        // Document date — used ONLY to drop genuinely post-dated docs. Match a
+        // real doc-date column; never 'Date', because pick()'s loose
+        // contains-match resolves 'Date' to "DueDate", which made every
+        // not-yet-due invoice look post-dated and dropped it from Current.
+        date: pick(r, 'DocDate', 'DocumentDate') ?? null,
         dueDate,
         balance,
       };
