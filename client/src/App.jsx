@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { fetchArAging, fetchHealth, checkEmailHealth, syncCustomers } from './api.js';
 import { getStoredUser, getToken, clearAuth } from './authStore.js';
 import LoginPage from './components/LoginPage.jsx';
@@ -72,12 +72,6 @@ function Hub({ user, onLogout }) {
     [runReport]
   );
 
-  useEffect(() => {
-    runReport();
-    fetchHealth().then(setHealth).catch(() => setHealth(null));
-    checkEmailHealth().then(setMailHealth).catch(() => setMailHealth(null));
-  }, [runReport]);
-
   const onSync = useCallback(async () => {
     setSyncing(true);
     try {
@@ -89,6 +83,19 @@ function Hub({ user, onLogout }) {
       setSyncing(false);
     }
   }, [runReport, branch]);
+
+  // On login (Hub only mounts once the user is authenticated) automatically
+  // pull LIVE data from MYOB, so the dashboard never opens on a stale snapshot.
+  // Guarded with a ref so it runs once per session — not on every re-render or
+  // branch change (which would needlessly hit MYOB's single API seat).
+  const didInitialSync = useRef(false);
+  useEffect(() => {
+    fetchHealth().then(setHealth).catch(() => setHealth(null));
+    checkEmailHealth().then(setMailHealth).catch(() => setMailHealth(null));
+    if (didInitialSync.current) return;
+    didInitialSync.current = true;
+    onSync();
+  }, [onSync]);
 
   return (
     <div className="flex h-screen overflow-hidden bg-stone-100 text-stone-900">
@@ -142,8 +149,8 @@ function Hub({ user, onLogout }) {
                       </div>
                     </div>
                   )}
-                  {/* First load: full inline loader. */}
-                  {loading && !data && <Loader message="Loading AR Aging report from MYOB…" />}
+                  {/* First load (incl. the auto-sync on login): full inline loader. */}
+                  {(loading || syncing) && !data && <Loader message="Loading AR Aging report from MYOB…" />}
                   {data && (
                     <Dashboard
                       data={data}
