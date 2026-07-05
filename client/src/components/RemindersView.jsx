@@ -366,12 +366,12 @@ export default function RemindersView() {
                     </th>
                     <th className="text-left font-medium px-2 py-2">Customer</th>
                     <th className="text-right font-medium px-2 py-2">Overdue (31+)</th>
-                    {!testMode && <th className="text-left font-medium px-2 py-2">Customer email</th>}
+                    <th className="text-left font-medium px-2 py-2">Customer email</th>
+                    <th className="text-left font-medium px-2 py-2">Phone</th>
                     <th className="text-left font-medium px-2 py-2">Recipient</th>
                     <th className="text-left font-medium px-2 py-2">Status</th>
-                    {/* Action column: per-row "Send" button to email a single customer's reminder.
-                        Hidden for now — uncomment the <th> below to show the Action column again. */}
-                    {/* <th className="text-left font-medium px-3 py-2">Action</th> */}
+                    {/* Action column: per-row "Send" button to email a single customer's reminder. */}
+                    <th className="text-left font-medium px-3 py-2">Action</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-stone-100">
@@ -391,13 +391,15 @@ export default function RemindersView() {
                         <div className="text-xs text-stone-500 mono">{r.customerId}</div>
                       </td>
                       <td className="px-2 py-2.5 text-right num">{fmtMoney(r.overdue)}</td>
-                      {!testMode && (
-                        <td className="px-2 py-2.5">
-                          {/* Show the customer's email on file; leave blank when none is known. */}
-                          {r.customerEmail}
-                        </td>
-                      )}
-                      <td className="px-2 py-2.5">{r.recipient}</td>
+                      {/* Customer's MYOB email and phone; blank when none is on file. */}
+                      <td className="px-2 py-2.5">{r.customerEmail}</td>
+                      <td className="px-2 py-2.5">{r.customerPhone}</td>
+                      {/* Recipient reflects the Test-mode toggle live: in test mode every
+                          email goes to your test inbox; otherwise it goes to the customer's
+                          own MYOB email (blank when none is on file in MYOB). */}
+                      <td className="px-2 py-2.5">
+                        {testMode ? data?.testRecipient || r.recipient : r.customerEmail}
+                      </td>
                       <td className="px-2 py-2.5">
                         <span
                           className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold ${STATUS_PILL[r.status] || 'bg-stone-100 text-stone-600'
@@ -407,9 +409,8 @@ export default function RemindersView() {
                         </span>
                         {r.error && <div className="text-xs text-red-600 mt-0.5">{r.error}</div>}
                       </td>
-                      {/* Send button: emails this one customer; disabled while any bulk/single send is in flight.
-                          Hidden for now — uncomment the <td> below to show the Send button again. */}
-                      {/* <td className="px-3 py-2.5">
+                      {/* Send button: emails this one customer; disabled while any bulk/single send is in flight. */}
+                      <td className="px-3 py-2.5">
                         <button
                           className="text-xs px-2.5 py-1 border border-stone-300 rounded hover:bg-stone-50 disabled:opacity-40"
                           onClick={() => sendOne(r)}
@@ -417,7 +418,7 @@ export default function RemindersView() {
                         >
                           {sendingId === r.customerId ? 'Sending…' : 'Send'}
                         </button>
-                      </td> */}
+                      </td>
                     </tr>
                   ))}
                   {results.length === 0 && (

@@ -74,8 +74,16 @@ function Hub({ user, onLogout }) {
 
   const onSync = useCallback(async () => {
     setSyncing(true);
+    setError(null);
     try {
-      await syncCustomers();
+      // Customer sync is best-effort: a hiccup here (e.g. MYOB's single API seat
+      // momentarily busy → ECONNRESET) must NOT abort the AR aging refresh, which
+      // is the figure the dashboard actually shows. Swallow its error and carry on.
+      try {
+        await syncCustomers();
+      } catch (e) {
+        console.warn('Customer sync failed; continuing to AR aging refresh:', e.message);
+      }
       await runReport(branch, { refresh: true });
     } catch (e) {
       setError(e.message);
