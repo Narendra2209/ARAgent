@@ -422,8 +422,11 @@ async function fetchAgingGiCustomers() {
     const oldestDays =
       buckets.b90plus ? 120 : buckets.b61_90 ? 90 : buckets.b31_60 ? 60 : buckets.b1_30 ? 30 : 0;
     return {
-      customerId: String(fieldValue(r[col.customerId]) ?? '(unknown)'),
-      customerName: String(fieldValue(r[col.customerName]) ?? fieldValue(r[col.customerId]) ?? ''),
+      // The summary GI pads codes to a fixed width (e.g. "C0016     "); trim so
+      // customerId joins cleanly against the (trimmed) customer cache — otherwise
+      // every email/phone lookup misses on the trailing whitespace.
+      customerId: String(fieldValue(r[col.customerId]) ?? '(unknown)').trim(),
+      customerName: String(fieldValue(r[col.customerName]) ?? fieldValue(r[col.customerId]) ?? '').trim(),
       branch: col.branch ? String(fieldValue(r[col.branch]) ?? '') : '',
       ...buckets,
       total,

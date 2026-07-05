@@ -51,12 +51,18 @@ export async function buildOverdueReminders() {
     .filter((c) => c.overdue > 0)
     .filter((c) => tierEnabled.has(c.tier))
     .map((c) => {
-      const profile = profileById.get(c.customerId);
+      // AR-aging codes can arrive padded to a fixed width (e.g. "C0016     ")
+      // from the summary GI / stored snapshot, while the customer cache keys are
+      // trimmed — so normalise before the lookup or every email/phone misses.
+      const customerId = String(c.customerId).trim();
+      const profile = profileById.get(customerId);
       return {
         ...c,
+        customerId,
         // The customer's real email on file; leave blank when none is known
         // (don't substitute the default placeholder address).
         customerEmail: profile?.email || '',
+        customerPhone: profile?.phone || '',
         usingDefaultEmail: profile ? profile.usingDefaultEmail : true,
       };
     })
@@ -209,6 +215,7 @@ export async function sendOverdueReminders({
       customerName: r.customerName,
       overdue: r.overdue,
       customerEmail: r.customerEmail,
+      customerPhone: r.customerPhone,
       usingDefaultEmail: r.usingDefaultEmail,
       recipient,
       subject,
