@@ -66,6 +66,14 @@ export const config = {
     dbName: process.env.MONGODB_DB_NAME || 'ar_agent',
   },
 
+  // ---- Scheduled daily snapshot (external cron pings /api/cron/snapshot) ----
+  cron: {
+    // Shared secret the scheduler must echo back (header x-cron-secret or
+    // ?secret=). Blank = endpoint is open (fine for a private/unknown URL, but
+    // set it in production). See .github/workflows/daily-snapshot.yml.
+    secret: process.env.CRON_SECRET || '',
+  },
+
   // ---- Authentication (JWT login, admin/user roles) ----
   auth: {
     // Secret used to sign login tokens. CHANGE THIS in production via .env.
@@ -111,7 +119,51 @@ export const config = {
     // Absolute path to a PNG/JPG image embedded at the bottom of every email.
     signatureImagePath: process.env.MAIL_SIGNATURE_IMAGE_PATH || '',
   },
+
+  // ---- Overdue reminder calls (AI voice agent: Vapi + Twilio) ----
+  calls: {
+    // Master switch. Leave OFF until Vapi + Twilio are wired and tested.
+    enabled: bool(process.env.CALLS_ENABLED, false),
+    // Which voice-AI provider places the call. Only 'vapi' is implemented today;
+    // swap this + callClient.js to move to Bland/Retell without touching callService.
+    provider: (process.env.CALLS_PROVIDER || 'vapi').toLowerCase(),
+    vapiApiKey: process.env.VAPI_API_KEY || '',
+    vapiAssistantId: process.env.VAPI_ASSISTANT_ID || '',
+    // The imported Twilio number in Vapi (Phone Numbers → the number's id).
+    vapiPhoneNumberId: process.env.VAPI_PHONE_NUMBER_ID || '',
+    // testMode=true: call testPhone instead of the real customer. Defaults ON so
+    // you can't accidentally cold-call real customers while wiring this up.
+    testMode: bool(process.env.CALLS_TEST_MODE, true),
+    testPhone: process.env.CALLS_TEST_PHONE || '', // your own mobile, E.164 (+61...)
+    // Default country for normalising local numbers to E.164 (AU = +61).
+    defaultCountry: (process.env.CALLS_DEFAULT_COUNTRY || 'AU').toUpperCase(),
+    // Shared secret Vapi must echo back on the webhook so we can trust the caller.
+    webhookSecret: process.env.CALLS_WEBHOOK_SECRET || '',
+
+    // ---- Enterprise guardrails (the Airtel-style dialer rules) ----
+    // Calling window in the customer's business timezone (config.arAging.timezone).
+    // Real customer calls outside this window are BLOCKED. Bypassed in testMode so
+    // you can still test-call your own phone anytime.
+    callWindowStart: Number(process.env.CALLS_WINDOW_START) || 9, // 9am
+    callWindowEnd: Number(process.env.CALLS_WINDOW_END) || 18, // 6pm (exclusive)
+    callWeekdaysOnly: bool(process.env.CALLS_WEEKDAYS_ONLY, true),
+    // Anti-harassment: don't call the same customer again within this many days.
+    recallCooldownDays: Number(process.env.CALLS_RECALL_COOLDOWN_DAYS) || 3,
+  },
 };
+
+export function assertCallsConfigured() {
+  const missing = [];
+  if (!config.calls.vapiApiKey) missing.push('VAPI_API_KEY');
+  if (!config.calls.vapiAssistantId) missing.push('VAPI_ASSISTANT_ID');
+  if (!config.calls.vapiPhoneNumberId) missing.push('VAPI_PHONE_NUMBER_ID');
+  if (config.calls.testMode && !config.calls.testPhone) missing.push('CALLS_TEST_PHONE');
+  if (missing.length) {
+    throw new Error(
+      `Calling agent is not configured. Missing: ${missing.join(', ')}. Set them in server/.env.`
+    );
+  }
+}
 
 export function assertMyobConfigured() {
   const missing = [];

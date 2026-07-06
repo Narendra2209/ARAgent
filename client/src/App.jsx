@@ -5,6 +5,7 @@ import LoginPage from './components/LoginPage.jsx';
 import Sidebar from './components/Sidebar.jsx';
 import Topbar from './components/Topbar.jsx';
 import Dashboard from './components/Dashboard.jsx';
+import StatusView from './components/StatusView.jsx';
 import Loader from './components/Loader.jsx';
 import CustomersView from './components/CustomersView.jsx';
 import CustomerDetail from './components/CustomerDetail.jsx';
@@ -173,6 +174,7 @@ function Hub({ user, onLogout }) {
                 </div>
               )}
 
+              {safeView === 'status' && <StatusView />}
               {safeView === 'customers' && <CustomersView onOpenCustomer={setCustomerId} />}
               {safeView === 'invoices' && <InvoicesView onOpenCustomer={setCustomerId} />}
               {safeView === 'reminders' && <RemindersView />}

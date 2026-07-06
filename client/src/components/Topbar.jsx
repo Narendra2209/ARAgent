@@ -4,6 +4,7 @@ import { Spinner } from './Loader.jsx';
 
 const TITLES = {
   dashboard: 'Dashboard',
+  status: 'Status',
   customers: 'Customers',
   invoices: 'Invoices',
   reminders: 'Overdue Reminders',
@@ -17,6 +18,7 @@ const TITLES = {
 // Jump targets for the search palette / quick-add menu.
 const JUMP = [
   { key: 'dashboard', label: 'Dashboard' },
+  { key: 'status', label: 'Status' },
   { key: 'customers', label: 'Customers' },
   { key: 'invoices', label: 'Invoices' },
   { key: 'reminders', label: 'Overdue Reminders' },

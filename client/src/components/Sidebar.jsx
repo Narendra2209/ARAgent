@@ -3,6 +3,7 @@ import logoUrl from '../assets/metfold-logo.jpeg';
 
 const NAV = [
   { key: 'dashboard', label: 'Dashboard' },
+  { key: 'status', label: 'Status' },
   { key: 'customers', label: 'Customers' },
   // { key: 'invoices', label: 'Invoices' },
   { key: 'reminders', label: 'Overdue Reminders' },

@@ -11,6 +11,8 @@ import {
 } from './arAgingService.js';
 import { getCustomers, syncCustomersFromMyob } from './customerService.js';
 import { sendOverdueReminders } from './reminderService.js';
+import { callOverdueReminders, recordCallWebhook } from './callService.js';
+import { assertCallsConfigured } from './callClient.js';
 import {
   getSignatureMeta,
   getSignatureImage,
@@ -38,6 +40,7 @@ import {
   ALL_TIERS,
 } from './settingsStore.js';
 import { EmailLog } from './models/EmailLog.js';
+import { CallLog } from './models/CallLog.js';
 import { ArAgingSnapshot } from './models/ArAgingSnapshot.js';
 import { Customer } from './models/Customer.js';
 import { Comment } from './models/Comment.js';
@@ -136,6 +139,58 @@ app.delete('/api/auth/users/:id', requireAuth, async (req, res) => {
   }
 });
 
+// End-of-call webhook from the voice provider (Vapi). PUBLIC — Vapi has no login
+// token — so it's authenticated by a shared secret instead. Must sit ABOVE the
+// requireAuth guard below. Always 200s so the provider doesn't retry-storm.
+app.post('/api/calls/webhook', async (req, res) => {
+  try {
+    const secret = config.calls.webhookSecret;
+    if (secret) {
+      const given =
+        req.get('x-vapi-secret') || req.get('x-webhook-secret') || req.query.secret;
+      if (given !== secret) return res.status(401).json({ error: 'bad secret' });
+    }
+    const result = await recordCallWebhook(req.body);
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    console.error('Call webhook failed:', err.message);
+    res.json({ ok: false, error: err.message });
+  }
+});
+
+// Daily AR aging snapshot capture — pinged by an external scheduler (the GitHub
+// Actions cron in .github/workflows/daily-snapshot.yml) so exactly one snapshot
+// is stored per day even when nobody opens the app. PUBLIC (a cron carries no
+// login token) — so it must sit ABOVE the requireAuth guard — and is protected
+// by CRON_SECRET when set. The ping itself also wakes the free-tier instance
+// from sleep. Accepts GET or POST so any simple pinger works. getArAgingSummary
+// with refresh forces a fresh MYOB pull and upserts the day's snapshot (keyed by
+// asOfDate, so repeat pings on the same day overwrite rather than duplicate).
+app.all('/api/cron/snapshot', async (req, res) => {
+  try {
+    const secret = config.cron.secret;
+    if (secret) {
+      const given = req.get('x-cron-secret') || req.query.secret;
+      if (given !== secret) return res.status(401).json({ ok: false, error: 'bad secret' });
+    }
+    if (!isDbConnected()) {
+      return res.status(503).json({ ok: false, error: 'Database not connected' });
+    }
+    const summary = await getArAgingSummary({ refresh: true });
+    console.log(`Daily snapshot captured for ${summary.asOfDate}`);
+    res.json({
+      ok: true,
+      asOfDate: summary.asOfDate,
+      totalReceivables: summary.kpis.totalReceivables,
+      totals: summary.totals,
+      capturedAt: new Date().toISOString(),
+    });
+  } catch (err) {
+    console.error('Daily snapshot capture failed:', err.message);
+    res.status(502).json({ ok: false, error: err.message });
+  }
+});
+
 // ============================================================
 //  Everything below this line requires authentication.
 // ============================================================
@@ -215,6 +270,8 @@ app.get('/api/ar-aging/history', async (_req, res) => {
     const rows = await ArAgingSnapshot.find({}, {
       asOfDate: 1, totalReceivables: 1, totalOverdue: 1, overduePct: 1,
       customerCount: 1, oldestBalanceDays: 1, lastCapturedAt: 1,
+      // Per-bucket totals drive the Status page's trend charts (one line per bucket).
+      totals: 1,
     })
       .sort({ asOfDate: -1 })
       .limit(180)
@@ -475,6 +532,47 @@ app.post('/api/reminders/send', async (req, res) => {
       error: notConfigured ? 'Email not configured' : 'Failed to send reminders',
       detail: err.response?.data?.error?.message ?? err.message,
     });
+  }
+});
+
+// Place AI reminder calls to overdue customers (or dryRun to preview targets).
+app.post('/api/calls/place', async (req, res) => {
+  const { testMode, dryRun = false, customerId, customerIds, minOverdueDays, force } =
+    req.body ?? {};
+  try {
+    if (!dryRun) assertCallsConfigured(); // a dry run never dials, so allow it
+    const result = await callOverdueReminders({
+      testMode,
+      dryRun,
+      customerId,
+      customerIds,
+      minOverdueDays,
+      force,
+      calledBy: req.user,
+    });
+    res.json(result);
+  } catch (err) {
+    const notConfigured = /not configured/i.test(err.message ?? '');
+    console.error('Place calls failed:', err.message);
+    res.status(notConfigured ? 400 : 502).json({
+      error: notConfigured ? 'Calling agent not configured' : 'Failed to place calls',
+      detail: err.message,
+    });
+  }
+});
+
+// Call history (the CallLog twin of /api/email-log).
+app.get('/api/call-log', async (req, res) => {
+  try {
+    if (!isDbConnected()) return res.status(503).json({ error: 'Database not connected' });
+    const limit = Math.min(Number(req.query.limit) || 100, 1000);
+    const filter = {};
+    if (req.query.customerId) filter.customerId = req.query.customerId;
+    if (req.query.status) filter.status = req.query.status;
+    const rows = await CallLog.find(filter).sort({ startedAt: -1 }).limit(limit).lean();
+    res.json({ count: rows.length, rows });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to read call log', detail: err.message });
   }
 });
 

@@ -63,6 +63,9 @@ export const exportCsvUrl = (branch) =>
   withToken(`/api/ar-aging/export.csv${branch ? `?branch=${encodeURIComponent(branch)}` : ''}`);
 export const fetchHealth = () => json('/api/health');
 
+// Daily AR aging snapshots (one per date) — powers the Status page trend charts.
+export const fetchArAgingHistory = () => json('/api/ar-aging/history');
+
 // Upload a MYOB "AR Aging (Detailed)" .xlsx export; the server parses and stores
 // it as the dashboard's source of truth. Sent as raw bytes (no multipart).
 export const importArAging = (file) =>
