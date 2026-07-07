@@ -176,13 +176,27 @@ app.all('/api/cron/snapshot', async (req, res) => {
     if (!isDbConnected()) {
       return res.status(503).json({ ok: false, error: 'Database not connected' });
     }
+    // Full daily sync WITHOUT anyone logging in — mirrors the dashboard's "Sync
+    // MYOB" button. Customer sync (names/emails) is best-effort: a hiccup there
+    // (e.g. MYOB's single API seat busy) must NOT block the AR aging snapshot,
+    // which is the figure the trend graph needs.
+    let customersSynced = null;
+    try {
+      const s = await syncCustomersFromMyob();
+      customersSynced = s?.synced ?? null;
+    } catch (e) {
+      console.warn('Daily cron: customer sync failed, continuing to aging:', e.message);
+    }
     const summary = await getArAgingSummary({ refresh: true });
-    console.log(`Daily snapshot captured for ${summary.asOfDate}`);
+    console.log(
+      `Daily snapshot captured for ${summary.asOfDate} (customers synced: ${customersSynced ?? 'skipped'})`
+    );
     res.json({
       ok: true,
       asOfDate: summary.asOfDate,
       totalReceivables: summary.kpis.totalReceivables,
       totals: summary.totals,
+      customersSynced,
       capturedAt: new Date().toISOString(),
     });
   } catch (err) {
