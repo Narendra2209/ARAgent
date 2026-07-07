@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   sendReminders,
   checkEmailHealth,
+  fetchHealth,
   getSignature,
   uploadSignature,
   removeSignature,
@@ -85,13 +86,19 @@ export default function RemindersView() {
   const testConnection = async () => {
     setBusy('health');
     setHealth(null);
-    // The backend runs on a free-tier host that sleeps after idle. The first
-    // check after a cold start can time out while the mail token is still being
-    // fetched; that fetch is cached server-side, so a couple of quiet retries a
-    // few seconds apart normally land on a warm "Connected". Only surface a hard
-    // error once we've stopped warming up.
-    const MAX_ATTEMPTS = 4;
+    // The backend runs on a free-tier host that sleeps after ~15 min idle. A
+    // cold start can take up to a minute, during which the mail check (and the
+    // proxy in front of it) times out and reports "warming". So first WAKE the
+    // server with the cheap /api/health ping, then retry the mail check long
+    // enough to outlast the cold start (10 × 5s ≈ 50s) before giving up. The
+    // token is cached server-side once fetched, so a later attempt lands on a
+    // warm "Connected". Only surface a hard error once we've stopped warming.
+    const MAX_ATTEMPTS = 10;
+    const RETRY_MS = 5000;
+    setHealth({ configured: true, tokenOk: false, warming: true });
     try {
+      // Wake the instance first; ignore the result, it just gets a request in.
+      await fetchHealth().catch(() => {});
       for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
         let result;
         try {
@@ -106,7 +113,7 @@ export default function RemindersView() {
         }
         // Show a soft "warming up" banner and wait before retrying.
         setHealth({ ...result, warming: true });
-        await new Promise((r) => setTimeout(r, 3000));
+        await new Promise((r) => setTimeout(r, RETRY_MS));
       }
     } finally {
       setBusy(null);

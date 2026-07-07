@@ -1,0 +1,41 @@
+name: Keep backend warm
+
+# Render's free tier spins the server down after ~15 min idle; the next request
+# then pays a ~50s cold start, which shows up in the app as the "⏳ Waking the
+# mail service… server was idle" banner. Pinging /api/health every 10 minutes
+# during business hours keeps the instance awake so that cold start (and the
+# banner) never happens while people are using the app.
+#
+# Uses the same SNAPSHOT_URL host — no extra secret needed; it derives the health
+# URL from it. NOTE: GitHub's scheduler can be delayed several minutes under load.
+# For rock-solid keep-warm, a dedicated uptime pinger (e.g. UptimeRobot, free,
+# 5-min interval) pointed at https://<backend>/api/health is even more reliable.
+
+on:
+  schedule:
+    # Every 10 min, 21:00–08:59 UTC ≈ 07:00–19:00 Sydney (AEST/AEDT) — business
+    # hours, so we don't burn the free-tier's monthly hours keeping it up overnight.
+    - cron: '*/10 21-23,0-8 * * *'
+  workflow_dispatch: {}
+
+concurrency:
+  group: keep-warm
+  cancel-in-progress: true
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping health endpoint
+        env:
+          SNAPSHOT_URL: ${{ secrets.SNAPSHOT_URL }}
+        run: |
+          if [ -z "$SNAPSHOT_URL" ]; then
+            echo "::error::SNAPSHOT_URL repo secret is not set."
+            exit 1
+          fi
+          # SNAPSHOT_URL ends in /api/cron/snapshot; the health check is /api/health.
+          HEALTH_URL="${SNAPSHOT_URL%/api/cron/snapshot}/api/health"
+          echo "Pinging $HEALTH_URL"
+          curl -fsS --retry 5 --retry-delay 10 --retry-all-errors --max-time 90 "$HEALTH_URL"
+          echo
