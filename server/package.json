@@ -19,6 +19,7 @@
     "jsonwebtoken": "^9.0.3",
     "mongoose": "^9.6.3",
     "nodemailer": "^8.0.10",
+    "serverless-http": "^3.2.0",
     "tough-cookie": "^5.1.0"
   }
 }

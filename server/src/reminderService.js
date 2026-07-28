@@ -5,7 +5,7 @@ import { sendMail } from './mailClient.js';
 import { getReminderTiers, getReminderEmail } from './settingsStore.js';
 import { EmailLog } from './models/EmailLog.js';
 import { isDbConnected } from './db.js';
-import { getSignatureAttachment, SIGNATURE_CID } from './signatureStore.js';
+import { getSignatureAttachment, SIGNATURE_CID, loadSignature } from './signatureStore.js';
 
 const money = (n) =>
   new Intl.NumberFormat('en-AU', {
@@ -193,6 +193,9 @@ export async function sendOverdueReminders({
   const testRecipient = config.mail.testRecipient;
   let { asOfDate, source, reminders } = await buildOverdueReminders();
   const template = await getReminderEmail(); // admin-configured format (or empty = default)
+  // Warm the signature cache from MongoDB so composeEmail()'s sync getter has it
+  // (the store is stateless-host friendly and won't read it from local disk).
+  await loadSignature();
 
   // Optional filter: a list of customer IDs (from per-row checkbox selection)
   // or a single customerId / customerName (legacy single-target form).
