@@ -63,6 +63,15 @@ export const exportCsvUrl = (branch) =>
   withToken(`/api/ar-aging/export.csv${branch ? `?branch=${encodeURIComponent(branch)}` : ''}`);
 export const fetchHealth = () => json('/api/health');
 
+// ---------------- Branch split ----------------
+
+// Live AR figures grouped by the operations team's branch assignment.
+export const fetchBranchSplit = ({ refresh = false } = {}) =>
+  json(`/api/branches${refresh ? '?refresh=1' : ''}`);
+
+// Downloaded via <a href>, so the token rides along in the query string.
+export const branchExportUrl = () => withToken('/api/branches/export.xlsx');
+
 // Daily AR aging snapshots (one per date) — powers the Status page trend charts.
 export const fetchArAgingHistory = () => json('/api/ar-aging/history');
 

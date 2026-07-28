@@ -5,6 +5,7 @@ const NAV = [
   { key: 'dashboard', label: 'Dashboard' },
   { key: 'status', label: 'Status' },
   { key: 'customers', label: 'Customers' },
+  { key: 'branches', label: 'Branch' },
   // { key: 'invoices', label: 'Invoices' },
   { key: 'reminders', label: 'Overdue Reminders' },
   // { key: 'ai_inbox', label: 'AI Inbox', badge: 'preview' },

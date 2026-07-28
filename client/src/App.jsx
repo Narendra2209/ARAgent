@@ -8,6 +8,7 @@ import Dashboard from './components/Dashboard.jsx';
 import StatusView from './components/StatusView.jsx';
 import Loader from './components/Loader.jsx';
 import CustomersView from './components/CustomersView.jsx';
+import BranchView from './components/BranchView.jsx';
 import CustomerDetail from './components/CustomerDetail.jsx';
 import InvoicesView from './components/InvoicesView.jsx';
 import RemindersView from './components/RemindersView.jsx';
@@ -100,11 +101,47 @@ function Hub({ user, onLogout }) {
   const didInitialSync = useRef(false);
   useEffect(() => {
     fetchHealth().then(setHealth).catch(() => setHealth(null));
-    checkEmailHealth().then(setMailHealth).catch(() => setMailHealth(null));
     if (didInitialSync.current) return;
     didInitialSync.current = true;
     onSync();
   }, [onSync]);
+
+  // The sidebar's "Outlook / Mail" dot. Probing mail auth costs an outbound
+  // SMTP/Graph round-trip, so two things routinely make a single attempt lie:
+  // the server loses its own race and answers `warming: true` (token still in
+  // flight, and it caches once it lands), or the request fails outright because
+  // the backend is cold/restarting. Either way one shot latched the badge to
+  // "not connected" for the whole session. Retry until we get a real verdict —
+  // the same wake-then-retry the Reminders page's Test connection already does.
+  useEffect(() => {
+    let cancelled = false;
+    const MAX_ATTEMPTS = 10;
+    const RETRY_MS = 5000;
+
+    (async () => {
+      for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+        let result = null;
+        try {
+          result = await checkEmailHealth();
+        } catch {
+          /* backend down or restarting — leave the badge on "…" and retry */
+        }
+        if (cancelled) return;
+
+        const settled = result && (result.tokenOk || !result.warming);
+        if (settled || attempt === MAX_ATTEMPTS) {
+          setMailHealth(result);
+          return;
+        }
+        await new Promise((r) => setTimeout(r, RETRY_MS));
+        if (cancelled) return;
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   return (
     <div className="flex h-screen overflow-hidden bg-stone-100 text-stone-900">
@@ -176,6 +213,7 @@ function Hub({ user, onLogout }) {
 
               {safeView === 'status' && <StatusView />}
               {safeView === 'customers' && <CustomersView onOpenCustomer={setCustomerId} />}
+              {safeView === 'branches' && <BranchView onOpenCustomer={setCustomerId} />}
               {safeView === 'invoices' && <InvoicesView onOpenCustomer={setCustomerId} />}
               {safeView === 'reminders' && <RemindersView />}
               {safeView === 'calendar' && <CalendarView />}
