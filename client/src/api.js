@@ -105,12 +105,20 @@ export const fetchCustomers = () => json('/api/customers');
 export const fetchCustomerDetail = (id) =>
   json(`/api/customers/${encodeURIComponent(id)}/detail`);
 export const syncCustomers = () => json('/api/customers/sync', { method: 'POST' });
-export const updateCustomer = (customerId, { emailOverride, phoneOverride } = {}) =>
-  json(`/api/customers/${encodeURIComponent(customerId)}`, {
+// `branch` is three-state on the server: a name assigns it, '' un-assigns, and
+// null resets to the workbook seed list. Only the keys present in `patch` are
+// sent, so an omitted field is left untouched.
+export const updateCustomer = (customerId, patch = {}) => {
+  const body = {};
+  for (const key of ['emailOverride', 'phoneOverride', 'branch']) {
+    if (patch[key] !== undefined) body[key] = patch[key];
+  }
+  return json(`/api/customers/${encodeURIComponent(customerId)}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ emailOverride, phoneOverride }),
+    body: JSON.stringify(body),
   });
+};
 
 // ---------------- Calendar comments ----------------
 

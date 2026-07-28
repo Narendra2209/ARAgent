@@ -9,7 +9,8 @@ export default function CustomersView({ onOpenCustomer }) {
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState(null);
   const [query, setQuery] = useState('');
-  const [edits, setEdits] = useState({}); // { [id]: { email, phone } }
+  const [edits, setEdits] = useState({}); // { [id]: { email, phone, branch } }
+  const [branchFilter, setBranchFilter] = useState('all'); // 'all' | '' (none) | name
   const [savingId, setSavingId] = useState(null);
   const [savedId, setSavedId] = useState(null);
   const [aging, setAging] = useState({}); // customerId -> { tier, total }
@@ -58,15 +59,34 @@ export default function CustomersView({ onOpenCustomer }) {
   const rows = useMemo(() => {
     const list = data?.customers ?? [];
     const q = query.trim().toLowerCase();
-    if (!q) return list;
-    return list.filter(
-      (c) =>
+    return list.filter((c) => {
+      // '' is a real choice here — "no branch set" — so compare against 'all'.
+      if (branchFilter !== 'all' && (c.branch || '') !== branchFilter) return false;
+      if (!q) return true;
+      return (
         c.customerName.toLowerCase().includes(q) ||
         c.customerId.toLowerCase().includes(q) ||
         c.email.toLowerCase().includes(q) ||
-        (c.phone || '').toLowerCase().includes(q)
-    );
-  }, [data, query]);
+        (c.phone || '').toLowerCase().includes(q) ||
+        (c.branch || '').toLowerCase().includes(q)
+      );
+    });
+  }, [data, query, branchFilter]);
+
+  // Workbook branches plus anything assigned since, with live counts.
+  const branchOptions = useMemo(() => {
+    const list = data?.customers ?? [];
+    const counts = new Map();
+    for (const c of list) counts.set(c.branch || '', (counts.get(c.branch || '') ?? 0) + 1);
+    const named = data?.branches ?? [];
+    const extra = [...counts.keys()].filter((b) => b && !named.includes(b)).sort();
+    return [...named, ...extra].map((name) => ({ name, count: counts.get(name) ?? 0 }));
+  }, [data]);
+
+  const unsetCount = useMemo(
+    () => (data?.customers ?? []).filter((c) => !c.branch).length,
+    [data]
+  );
 
   const setEdit = (id, field, value) =>
     setEdits((e) => ({ ...e, [id]: { ...(e[id] ?? {}), [field]: value } }));
@@ -83,7 +103,8 @@ export default function CustomersView({ onOpenCustomer }) {
     if (!e) return false;
     const emailChanged = e.email !== undefined && e.email !== (c.email ?? '');
     const phoneChanged = e.phone !== undefined && e.phone !== (c.phone ?? '');
-    return emailChanged || phoneChanged;
+    const branchChanged = e.branch !== undefined && e.branch !== (c.branch ?? '');
+    return emailChanged || phoneChanged || branchChanged;
   };
 
   const save = async (c) => {
@@ -94,6 +115,9 @@ export default function CustomersView({ onOpenCustomer }) {
       const patch = {};
       if (e.email !== undefined) patch.emailOverride = e.email;
       if (e.phone !== undefined) patch.phoneOverride = e.phone;
+      // '' is meaningful — it un-assigns a customer the workbook had filed under
+      // a branch — so send it rather than treating blank as "no change".
+      if (e.branch !== undefined) patch.branch = e.branch;
       await updateCustomer(c.customerId, patch);
       setData((d) => {
         if (!d) return d;
@@ -103,6 +127,7 @@ export default function CustomersView({ onOpenCustomer }) {
                 ...x,
                 email: e.email !== undefined && e.email ? e.email : x.email,
                 phone: e.phone !== undefined ? e.phone : x.phone,
+                branch: e.branch !== undefined ? e.branch : x.branch,
                 usingDefaultEmail: e.email ? false : x.usingDefaultEmail,
               }
             : x
@@ -129,7 +154,9 @@ export default function CustomersView({ onOpenCustomer }) {
           <h2 className="font-semibold text-sm">Customers</h2>
           {data && (
             <p className="text-xs text-stone-500 mt-0.5">
-              {data.count} customers
+              {rows.length === data.count
+                ? `${data.count} customers`
+                : `${rows.length} of ${data.count} customers`}
               {data.source === 'cache' && ' · cached'}
               {data.source === 'live' && ' · live from MYOB'}
               {data.source === 'mock' && ' · sample data'}
@@ -137,6 +164,20 @@ export default function CustomersView({ onOpenCustomer }) {
           )}
         </div>
         <div className="flex items-center gap-2">
+          <select
+            className="border border-stone-300 rounded px-2 py-1.5 text-sm bg-white focus:outline-none focus:border-orange-500"
+            value={branchFilter}
+            onChange={(e) => setBranchFilter(e.target.value)}
+            title="Filter by branch"
+          >
+            <option value="all">All branches</option>
+            {branchOptions.map((b) => (
+              <option key={b.name} value={b.name}>
+                {b.name} ({b.count})
+              </option>
+            ))}
+            <option value="">No branch ({unsetCount})</option>
+          </select>
           <input
             className="border border-stone-300 rounded px-3 py-1.5 text-sm w-64 max-w-full focus:outline-none focus:border-orange-500"
             placeholder="Filter by name, ID, email or phone…"
@@ -170,6 +211,7 @@ export default function CustomersView({ onOpenCustomer }) {
               <tr>
                 <th className="text-left font-medium px-4 py-2">Customer ID</th>
                 <th className="text-left font-medium px-2 py-2">Name</th>
+                <th className="text-left font-medium px-2 py-2">Branch</th>
                 <th className="text-left font-medium px-2 py-2">Tier</th>
                 <th className="text-right font-medium px-2 py-2">Outstanding</th>
                 <th className="text-right font-medium px-2 py-2">Credit limit</th>
@@ -190,6 +232,21 @@ export default function CustomersView({ onOpenCustomer }) {
                     >
                       {c.customerName}
                     </button>
+                  </td>
+                  {/* Editable: what's picked here is what the Branch page groups by. */}
+                  <td className="px-2 py-2.5">
+                    <select
+                      className="px-2 py-1 border border-stone-300 rounded text-sm bg-white focus:outline-none focus:border-orange-500"
+                      value={currentValue(c, 'branch')}
+                      onChange={(ev) => setEdit(c.customerId, 'branch', ev.target.value)}
+                    >
+                      <option value="">—</option>
+                      {branchOptions.map((b) => (
+                        <option key={b.name} value={b.name}>
+                          {b.name}
+                        </option>
+                      ))}
+                    </select>
                   </td>
                   <td className="px-2 py-2.5">
                     <TierBadge tier={aging[c.customerId]?.tier} />
@@ -243,7 +300,7 @@ export default function CustomersView({ onOpenCustomer }) {
               ))}
               {rows.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="px-4 py-12 text-center text-stone-400">
+                  <td colSpan={9} className="px-4 py-12 text-center text-stone-400">
                     {query ? `No customers match “${query}”.` : 'No customers found.'}
                   </td>
                 </tr>

@@ -188,6 +188,13 @@ export default function CustomerDetail({ customerId, onBack, onSendReminder }) {
                   <span className="mono">{customerId}</span>
                   <span>·</span>
                   <span>Avg oldest {c.oldestDays || 0} days</span>
+                  {/* Branch is omitted entirely for customers outside the split. */}
+                  {data.contact?.branch ? (
+                    <>
+                      <span>·</span>
+                      <span>Branch {data.contact.branch}</span>
+                    </>
+                  ) : null}
                   {data.contact?.creditLimit ? (
                     <>
                       <span>·</span>
