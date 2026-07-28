@@ -9,7 +9,7 @@ import {
   getOpenInvoices,
   importArAgingFromBuffer,
 } from './arAgingService.js';
-import { getCustomers, syncCustomersFromMyob } from './customerService.js';
+import { getCustomers, syncCustomersFromMyob, resolveBranch } from './customerService.js';
 import {
   getBranchSplit,
   buildBranchWorkbook,
@@ -291,20 +291,31 @@ export function buildApp() {
     try {
       if (!isDbConnected()) return res.status(503).json({ error: 'Database not connected' });
       const { customerId } = req.params;
-      const { emailOverride, phoneOverride } = req.body ?? {};
+      const { emailOverride, phoneOverride, branch } = req.body ?? {};
       const update = {};
       // null / empty string => clear the override; undefined => leave untouched.
       if (emailOverride !== undefined) update.emailOverride = emailOverride || '';
       if (phoneOverride !== undefined) update.phoneOverride = phoneOverride || '';
-      if (!Object.keys(update).length) {
+
+      // Branch is three-state, unlike the overrides above: a name assigns it,
+      // '' deliberately un-assigns (and still beats the workbook seed list), and
+      // null resets the customer back to whatever the seed list says.
+      const unset = {};
+      if (branch === null) unset.branch = '';
+      else if (branch !== undefined) update.branch = String(branch).trim();
+
+      if (!Object.keys(update).length && !Object.keys(unset).length) {
         return res.status(400).json({ error: 'Nothing to update' });
       }
       const doc = await Customer.findOneAndUpdate(
         { customerId },
-        { $set: { customerId, ...update } },
+        {
+          $set: { customerId, ...update },
+          ...(Object.keys(unset).length ? { $unset: unset } : {}),
+        },
         { new: true, upsert: true, setDefaultsOnInsert: true }
       ).lean();
-      res.json({ ok: true, customer: doc });
+      res.json({ ok: true, customer: { ...doc, branch: resolveBranch(doc) } });
     } catch (err) {
       res.status(500).json({ error: 'Failed to update customer', detail: err.message });
     }

@@ -3,6 +3,7 @@ import { myobClient, fieldValue } from './myobClient.js';
 import { mockCustomers } from './mockData.js';
 import { Customer } from './models/Customer.js';
 import { isDbConnected } from './db.js';
+import { branchForCustomer, BRANCH_ORDER } from './branchMap.js';
 
 /**
  * Strip everything except the actual number. MYOB contacts often tack a name or
@@ -95,6 +96,20 @@ function isValidEmail(value) {
   return typeof value === 'string' && value.includes('@') && value.trim().length > 0;
 }
 
+/**
+ * Which branch a customer belongs to.
+ *
+ * MYOB carries no branch, so there are two sources: the seed list transcribed
+ * from the operations team's workbook (branchMap.js) and whatever has since been
+ * set on the Customers page. A stored value always wins — including an empty
+ * string, which is how you deliberately un-assign a customer the workbook had
+ * filed under a branch. Only an absent field falls back to the seed list.
+ */
+export function resolveBranch(doc) {
+  if (typeof doc?.branch === 'string') return doc.branch;
+  return branchForCustomer(doc?.customerId) ?? '';
+}
+
 /** Apply Mongo overrides + the configured default email; sort by name. */
 function decorate(raw, defaultEmail) {
   return raw
@@ -107,6 +122,9 @@ function decorate(raw, defaultEmail) {
         customerId: c.customerId,
         customerName: c.customerName || c.customerId,
         creditLimit: Number(c.creditLimit) || 0,
+        // Assigned on the Customers page, else seeded from the workbook split.
+        // Blank for customers in neither, which is most of the master list.
+        branch: resolveBranch(c),
         phone: c.phoneOverride || c.phone || '',
         // Show the customer's real email/phone from MYOB; leave blank when none
         // is on file (don't substitute the default placeholder in the list).
@@ -142,6 +160,8 @@ async function upsertMyobIntoCache(raw) {
             // MYOB wins on every sync — drop manual edits so they can't mask it.
             emailOverride: '',
             phoneOverride: '',
+            // `branch` is deliberately NOT reset here: MYOB has no branch to
+            // overwrite it with, so a sync must leave the assignment alone.
             lastSyncedAt: now,
           },
         },
@@ -190,6 +210,14 @@ export async function getCustomers() {
     source,
     defaultEmail,
     count: customers.length,
+    // Options for the branch pickers: the workbook's branches first, then any
+    // extra name someone has typed in, so a new branch stays selectable.
+    branches: [
+      ...BRANCH_ORDER,
+      ...[...new Set(customers.map((c) => c.branch))]
+        .filter((b) => b && !BRANCH_ORDER.includes(b))
+        .sort(),
+    ],
     customers,
   };
 }

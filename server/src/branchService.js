@@ -92,19 +92,25 @@ function totalsFor(rows) {
  * @param customers aged rows from getArAgingSummary()
  * @param limits    Map of trimmed customer code -> credit limit
  */
-export function buildSplit({ customers, limits, asOfDate, source }) {
+export function buildSplit({ customers, profiles, asOfDate, source }) {
   const groups = new Map(BRANCH_ORDER.map((b) => [b, []]));
   for (const c of customers) {
     const id = String(c.customerId).trim();
-    const branch = branchForCustomer(id) ?? UNASSIGNED;
+    const p = profiles.get(id);
+    // Prefer the branch on the customer record (assigned from the Customers
+    // page, already seeded from the workbook there); fall back to the seed list
+    // directly if the customer master couldn't be read at all.
+    const branch = (p ? p.branch : branchForCustomer(id)) || UNASSIGNED;
     if (!groups.has(branch)) groups.set(branch, []);
-    groups.get(branch).push(buildRow(c, limits.get(id) ?? 0));
+    groups.get(branch).push(buildRow(c, p?.creditLimit ?? 0));
   }
 
-  // Keep the workbook's tab order; anything unmapped is appended last so a
-  // newly-created customer is visible instead of silently missing.
+  // Workbook tab order first, then any branch name added since, then Unassigned
+  // last — which only appears when it has customers, so a newly-created customer
+  // is visible instead of silently missing.
   const branches = [...groups.entries()]
     .filter(([name, rows]) => rows.length > 0 || name !== UNASSIGNED)
+    .sort(([a], [b]) => (a === UNASSIGNED) - (b === UNASSIGNED))
     .map(([name, rows]) => ({
       name,
       customers: sortRows(rows),
@@ -131,22 +137,26 @@ export function buildSplit({ customers, limits, asOfDate, source }) {
 export async function getBranchSplit({ refresh = false } = {}) {
   const summary = await getArAgingSummary({ refresh });
 
-  // Credit limits live on the customer master, not the aging run. Best effort:
-  // if the master is unreachable the report still renders with 0 limits (and
-  // therefore no over-limit flags) rather than failing outright.
-  const limits = new Map();
+  // Branch assignment and credit limits both live on the customer master, not
+  // the aging run. Best effort: if the master is unreachable the report still
+  // renders — falling back to the workbook seed list, with 0 limits and so no
+  // over-limit flags — rather than failing outright.
+  const profiles = new Map();
   try {
-    const { customers: profiles } = await getCustomers();
-    for (const p of profiles) {
-      limits.set(String(p.customerId).trim(), Number(p.creditLimit) || 0);
+    const { customers } = await getCustomers();
+    for (const p of customers) {
+      profiles.set(String(p.customerId).trim(), {
+        creditLimit: Number(p.creditLimit) || 0,
+        branch: p.branch || '',
+      });
     }
   } catch {
-    /* limits are optional */
+    /* falls back to branchMap.js below */
   }
 
   return buildSplit({
     customers: summary.customers,
-    limits,
+    profiles,
     asOfDate: summary.asOfDate,
     source: summary.source,
   });

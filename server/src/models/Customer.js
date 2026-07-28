@@ -10,6 +10,10 @@ const customerSchema = new mongoose.Schema(
     usingDefaultEmail: Boolean,
     emailOverride: String,        // user-edited; wins over MYOB email when set
     phoneOverride: String,        // user-edited; wins over MYOB phone when set
+    // Branch assignment set from the Customers page. MYOB sends no branch, so
+    // when this is unset the seed list in branchMap.js is used instead. Stored
+    // as '' to mean "deliberately no branch" — see resolveBranch().
+    branch: { type: String, default: undefined },
     lastSyncedAt: { type: Date, default: Date.now },
   },
   { timestamps: true }

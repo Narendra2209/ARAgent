@@ -705,17 +705,23 @@ export async function getArAgingSummary({ branch, refresh = false } = {}) {
 export async function getCustomerDetail(customerId) {
   const asOf = resolveAsOf();
   const docs = await getOpenDocumentsCached(asOf);
-  const idStr = String(customerId);
+  // MYOB right-pads customer ids in the AR feed ("C0195     ") but not in the
+  // customer master, so the two sides only ever match on a trimmed comparison.
+  // Callers reach this route with either form — the Dashboard passes the padded
+  // aging id, the Customers and Branch lists pass the trimmed master id — so
+  // normalise once here and compare trimmed everywhere below. Trimmed is also
+  // the form reminderService writes to EmailLog, so history lines up too.
+  const idStr = String(customerId).trim();
 
   // Reuse the shared aggregation so this customer's tier matches the dashboard.
   const { customers } = aggregateCustomers(docs, asOf);
   const customer =
-    customers.find((c) => String(c.customerId) === idStr) ||
+    customers.find((c) => String(c.customerId).trim() === idStr) ||
     { customerId: idStr, customerName: idStr, ...emptyBuckets(), total: 0, oldestDays: 0, tier: null };
 
   // Invoice-level rows for this customer (kept out of the summary).
   const invoices = docs
-    .filter((d) => String(d.customerId) === idStr)
+    .filter((d) => String(d.customerId).trim() === idStr)
     .map((d) => {
       const raw = d.dueDate ? daysBetween(asOf, d.dueDate) : 0;
       const days = Number.isFinite(raw) ? raw : 0;
@@ -736,7 +742,7 @@ export async function getCustomerDetail(customerId) {
   let contact = null;
   try {
     const { customers: profiles } = await getCustomers();
-    const p = profiles.find((c) => c.customerId === idStr);
+    const p = profiles.find((c) => String(c.customerId).trim() === idStr);
     if (p) {
       customer.customerName = p.customerName || customer.customerName;
       contact = {
@@ -745,6 +751,8 @@ export async function getCustomerDetail(customerId) {
         phone: p.phone || '',
         usingDefaultEmail: p.usingDefaultEmail,
         creditLimit: p.creditLimit || 0,
+        // Blank for customers outside the branch split (see branchMap.js).
+        branch: p.branch || '',
       };
     }
   } catch {
